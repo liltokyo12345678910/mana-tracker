@@ -95,3 +95,6 @@ footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 .photo-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .photo-btn{background:#22284a;border:2px dashed var(--accent);color:var(--text);text-align:center;cursor:pointer}
 .btn.danger{background:#5c1f2a;border-color:#a33;color:#fff}
+
+.card .name,.card .meta,.who{overflow-wrap:anywhere;word-break:break-word;min-width:0}
+.card{min-width:0}

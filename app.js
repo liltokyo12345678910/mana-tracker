@@ -37,6 +37,8 @@ function showTab(id) {
 }
 $$('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 $$('[data-goto]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.goto)));
+$('#accountTab').addEventListener('click', () => { if (!user) setAuthMode(false); });
+$('#heroJoin').addEventListener('click', () => { if (!user) setAuthMode(true); });
 
 function requireLogin(msg) {
   if (user) return true;
@@ -78,7 +80,16 @@ $('#signOutBtn').addEventListener('click', async () => { await sb.auth.signOut()
 // Supabase recommends not awaiting other calls directly inside this callback, so defer the work
 sb.auth.onAuthStateChange((_evt, session) => { setTimeout(() => handleAuth(session), 0); });
 async function handleAuth(session) {
+  const prevId = user?.id;
   user = session?.user || null;
+  if (prevId !== user?.id) {
+    messages = []; activePartner = null; pendingListing = null;
+    $('#convoList').innerHTML = ''; $('#chatMessages').innerHTML = '';
+    $('#chatHeader').textContent = 'Pick a conversation';
+    $('#myListings').innerHTML = '';
+    $('#profileMsg').textContent = ''; $('#avatarMsg').textContent = '';
+    if (typeof renderListings === 'function' && listings.length) renderListings();
+  }
   if (user) {
     const { data } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
     profile = data;
@@ -89,6 +100,8 @@ async function handleAuth(session) {
     fillProfileForm();
     updateHeader();
     subscribeMessages();
+    if ($('#account').classList.contains('active')) loadMyListings();
+    if ($('#chat').classList.contains('active')) loadConvos();
   } else {
     profile = null;
     $('#accountTab').textContent = 'Sign in';
@@ -119,6 +132,9 @@ function updateHeader() {
 
 // ---------- Profile ----------
 let pendingLoc = null;
+function renderAvatarPreview() {
+  $('#avatarPreview').outerHTML = avatarHtml(profile, 'xl').replace('<span class="avatar xl"', '<span id="avatarPreview" class="avatar xl"');
+}
 function fillProfileForm() {
   if (!profile) return;
   const f = $('#profileForm');
@@ -162,7 +178,7 @@ $('#avatarInput').addEventListener('change', async (e) => {
     if (error) throw error;
     profile = data;
     profilesById[user.id] = data;
-    fillProfileForm();
+    renderAvatarPreview();
     updateHeader();
     $('#avatarMsg').textContent = 'Looking good!';
     if (mapReady) loadMapPlayers();
@@ -179,7 +195,7 @@ $('#setLocBtn').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition((p) => {
     pendingLoc = { lat: fuzz(p.coords.latitude), lng: fuzz(p.coords.longitude) };
     $('#locMsg').textContent = 'Got it. Tap Save profile to keep it.';
-  }, () => { $('#locMsg').textContent = 'Could not get your location.'; });
+  }, () => { $('#locMsg').textContent = "Couldn't get your location. We'll use your city instead when you save."; });
 });
 $('#profileForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -188,6 +204,13 @@ $('#profileForm').addEventListener('submit', async (e) => {
   if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) { $('#profileMsg').textContent = 'Username must be 3-24 letters, numbers or underscores.'; return; }
   const upd = { username, city: f.city.value.trim() || null, deck: f.deck.value.trim() || null, note: f.note.value.trim().slice(0, 50) || null, show_on_map: f.show_on_map.checked };
   if (pendingLoc) Object.assign(upd, pendingLoc);
+  else if (upd.show_on_map && !profile.lat && upd.city) {
+    // No GPS location: place them on the map by their city instead
+    try {
+      const g = await (await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(upd.city))).json();
+      if (g[0]) Object.assign(upd, { lat: fuzz(+g[0].lat), lng: fuzz(+g[0].lon) });
+    } catch {}
+  }
   const { data, error } = await sb.from('profiles').update(upd).eq('id', user.id).select().single();
   if (error) { $('#profileMsg').textContent = error.message.includes('duplicate') ? 'That username is taken.' : error.message; return; }
   profile = data; pendingLoc = null;
@@ -199,7 +222,18 @@ $('#profileForm').addEventListener('submit', async (e) => {
 });
 
 // ---------- Market (live Scryfall) ----------
+let nextPage = null, shownCount = 0, totalCount = 0;
+async function loadMoreCards() {
+  if (!nextPage) return;
+  const data = await (await fetch(nextPage)).json();
+  $('#marketGrid').insertAdjacentHTML('beforeend', (data.data || []).map(cardTile).join(''));
+  shownCount += (data.data || []).length;
+  $('#marketStatus').textContent = `Showing ${shownCount} of ${totalCount} cards, highest price first`;
+  nextPage = data.has_more ? data.next_page : null;
+  $('#loadMore').classList.toggle('hidden', !nextPage);
+}
 async function runSearch(q) {
+  $('#loadMore').classList.add('hidden');
   const status = $('#marketStatus');
   const grid = $('#marketGrid');
   status.textContent = 'Loading prices...';
@@ -208,9 +242,11 @@ async function runSearch(q) {
     const url = `https://api.scryfall.com/cards/search?order=usd&dir=desc&unique=cards&q=${encodeURIComponent(q + ' game:paper')}`;
     const data = await (await fetch(url)).json();
     if (!data.data) { status.textContent = 'No cards found. Try another search.'; return; }
-    const cards = data.data.slice(0, 40);
+    const cards = data.data;
     status.textContent = `Showing ${cards.length} of ${data.total_cards} cards, highest price first`;
     grid.innerHTML = cards.map(cardTile).join('');
+    nextPage = data.has_more ? data.next_page : null; shownCount = cards.length; totalCount = data.total_cards;
+    $('#loadMore').classList.toggle('hidden', !nextPage);
   } catch { status.textContent = 'Could not load prices right now. Try again in a moment.'; }
 }
 function cardTile(c) {
@@ -221,7 +257,7 @@ function cardTile(c) {
     <div class="name">${esc(c.name)}</div>
     <div class="meta">${esc(c.set_name)} · ${esc(c.rarity)}</div>
     <div class="price">${usd}</div>
-    <button class="btn" data-quick="${esc(c.name)}" data-usd="${c.prices?.usd || ''}">List this card</button>
+    <button class="btn" data-quick="${esc(c.name)}" data-id="${c.id}" data-usd="${c.prices?.usd || ''}">List this card</button>
   </div>`;
 }
 $('#marketGrid').addEventListener('click', (e) => {
@@ -234,7 +270,7 @@ $('#marketGrid').addEventListener('click', (e) => {
   const f = $('#listingForm');
   f.card.value = b.dataset.quick;
   f.price.value = b.dataset.usd ? `$${b.dataset.usd}` : '';
-  lookupCard(b.dataset.quick);
+  lookupCard(b.dataset.quick, b.dataset.id);
 });
 $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); const v = $('#searchInput').value.trim(); if (v) runSearch(v); });
 $$('.chip').forEach((c) => c.addEventListener('click', () => runSearch(c.dataset.q)));
@@ -274,7 +310,7 @@ function renderListings() {
   const t = $('#typeFilter').value;
   const k = $('#catFilter').value;
   const shown = listings.filter((l) => (!t || l.type === t) && (!k || (l.category || 'single') === k) && (l.card + ' ' + (l.profiles?.username || '') + ' ' + (l.city || '')).toLowerCase().includes(f));
-  $('#listings').innerHTML = shown.map((l) => listingCard(l, false)).join('') || '<p class="status">No listings yet. Be the first to post one!</p>';
+  $('#listings').innerHTML = shown.map((l) => listingCard(l, false)).join('') || (listings.length ? '<p class="status">No listings match your filters.</p>' : '<p class="status">No listings yet. Be the first to post one!</p>');
 }
 
 // Selling form: single card / bulk lot / deck
@@ -314,17 +350,39 @@ $('#cardSearch').addEventListener('input', (e) => {
   lookupTimer = setTimeout(() => lookupCard(q), 900);
 });
 $('#cardSearch').addEventListener('change', (e) => lookupCard(e.target.value.trim()));
-async function lookupCard(q) {
-  if (!q) return;
+function editDist(a, b) {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+// Typo fallback: try shorter starts of the name and pick the closest card name
+async function guessName(q) {
+  for (let n = q.length - 1; n >= 3; n--) {
+    try {
+      const r = await (await fetch('https://api.scryfall.com/cards/autocomplete?q=' + encodeURIComponent(q.slice(0, n)))).json();
+      if (r.data && r.data.length) return r.data.reduce((best, x) => (editDist(x, q) < editDist(best, q) ? x : best));
+    } catch {}
+  }
+  return null;
+}
+async function lookupCard(q, id) {
+  if (!q && !id) return;
   $('#cardFound').textContent = 'Finding card...';
   try {
-    const res = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(q));
-    const c = await res.json();
+    let c = await (await fetch(id ? 'https://api.scryfall.com/cards/' + id : 'https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(q))).json();
+    if (c.object !== 'card' && !id) {
+      const g = await guessName(q);
+      if (g) c = await (await fetch('https://api.scryfall.com/cards/named?exact=' + encodeURIComponent(g))).json();
+    }
     if (c.object !== 'card') { foundCard = null; $('#cardFound').textContent = 'Card not found. Check the spelling.'; return; }
     const img = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal || '';
     foundCard = { name: c.name, id: c.id, image: img, usd: c.prices?.usd };
-    $('#cardFound').innerHTML = `${img ? `<img src="${img}" alt="">` : ''}<div><b>${esc(c.name)}</b><br>${esc(c.set_name)}${c.prices?.usd ? '<br>Market price: $' + c.prices.usd : ''}</div>`;
-    if ($('#cardSearch').value.trim().toLowerCase() !== c.name.toLowerCase()) $('#cardSearch').value = c.name;
+    const fixed = q && c.name.toLowerCase() !== q.toLowerCase() ? '<br><i>Did you mean this card?</i>' : '';
+    $('#cardFound').innerHTML = `${img ? `<img src="${img}" alt="">` : ''}<div><b>${esc(c.name)}</b><br>${esc(c.set_name)}${c.prices?.usd ? '<br>Market price: $' + c.prices.usd : ''}${fixed}</div>`;
+    $('#cardSearch').value = c.name;
   } catch { $('#cardFound').textContent = 'Could not look up that card right now.'; }
 }
 
@@ -411,8 +469,9 @@ async function loadMyListings() {
 document.addEventListener('click', async (e) => {
   const del = e.target.closest('[data-del]');
   if (del && confirm('Take down this post?')) {
-    const { error } = await sb.from('listings').delete().eq('id', del.dataset.del);
-    if (error) { alert('Could not take down post: ' + error.message); return; }
+    del.disabled = true; del.textContent = 'Taking down...';
+    const { data: gone, error } = await sb.from('listings').delete().eq('id', del.dataset.del).select('id');
+    if (error || !gone?.length) { alert('Could not take down post' + (error ? ': ' + error.message : '. Please try again.')); del.disabled = false; del.textContent = 'Take down post'; return; }
     listings = listings.filter((l) => String(l.id) !== del.dataset.del);
     renderListings();
     if (user) loadMyListings();
@@ -579,11 +638,15 @@ async function saveNote(note) {
   profile = data;
   updateHeader();
   fillProfileForm();
+  $('#noteInput').placeholder = note ? 'Note posted!' : 'Add a note over your pin (50 characters max)';
+  if (note) { const b = $('#noteForm button[type=submit]'); b.textContent = 'Posted!'; setTimeout(() => (b.textContent = 'Post note'), 2000); }
   if (meMarker && myPos) { meMarker.setIcon(pinIcon(profile, true)); }
   if (mapReady) loadMapPlayers();
 }
 $('#noteForm').addEventListener('submit', (e) => { e.preventDefault(); saveNote($('#noteInput').value.trim().slice(0, 50)); });
 $('#clearNote').addEventListener('click', () => { $('#noteInput').value = ''; saveNote(''); });
+
+$('#loadMore').addEventListener('click', loadMoreCards);
 
 // ---------- Start ----------
 setAuthMode(true);
