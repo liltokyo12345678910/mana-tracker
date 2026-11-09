@@ -78,3 +78,16 @@ footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 .topbar{gap:8px}
 .pin-note{background:#fff;color:#111;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;margin-bottom:4px;max-width:150px;white-space:normal;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4);position:relative}
 .pin-note:after{content:'';position:absolute;bottom:-5px;left:50%;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#fff}
+
+.full{grid-column:1/-1}
+.seg{display:flex;gap:6px;background:#0b0e1a;padding:4px;border-radius:12px}
+.seg-btn{flex:1;background:none;border:none;color:var(--muted);padding:10px;border-radius:9px;font-weight:700;cursor:pointer}
+.seg-btn.active{background:var(--accent);color:#111}
+.found{display:flex;gap:10px;align-items:center;font-size:.9rem;color:var(--muted)}
+.found img{width:70px;border-radius:6px}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.thumbs img{width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.card .cover{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;background:#0b0e1a}
+.card .cover.cardimg{aspect-ratio:auto;object-fit:contain}
+.card .thumbs img{width:44px;height:44px}
+.badge.cat{background:#22284a;border:1px solid var(--line);margin-left:4px}

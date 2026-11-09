@@ -113,15 +113,35 @@
       <button class="btn primary" id="newListingBtn">+ List a card</button>
     </div>
     <form id="listingForm" class="card-form hidden">
-      <input name="card" required maxlength="120" placeholder="Card name">
-      <select name="type"><option>For sale</option><option>For trade</option><option>Looking for</option></select>
-      <input name="price" maxlength="120" placeholder="Asking price or what you want in trade">
-      <select name="condition"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Any</option></select>
-      <input name="city" maxlength="80" placeholder="Your city">
-      <button class="btn primary" type="submit">Post listing</button>
+      <div class="seg full">
+        <button type="button" class="seg-btn active" data-cat="single">Single card</button>
+        <button type="button" class="seg-btn" data-cat="lot">Bulk lot</button>
+        <button type="button" class="seg-btn" data-cat="deck">Deck</button>
+      </div>
+      <select name="type" class="full"><option>For sale</option><option>For trade</option><option>Looking for</option></select>
+      <div class="cat cat-single full stack">
+        <input id="cardSearch" name="card" maxlength="120" placeholder="Card name (we'll find it for you)" autocomplete="off" list="cardSuggest">
+        <datalist id="cardSuggest"></datalist>
+        <div id="cardFound" class="found"></div>
+        <select name="condition"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Damaged</option></select>
+      </div>
+      <div class="cat cat-lot full stack hidden">
+        <input name="lot_title" maxlength="120" placeholder="Lot name, e.g. 500 bulk commons and uncommons">
+        <input name="quantity" type="number" min="1" max="100000" placeholder="Number of cards in the lot">
+      </div>
+      <div class="cat cat-deck full stack hidden">
+        <input name="deck_name" maxlength="120" placeholder="Deck name, e.g. Myrel Soldiers Commander deck">
+      </div>
+      <input name="price" maxlength="120" placeholder="Price you want (e.g. $25) or what you want in trade" class="full">
+      <input name="city" maxlength="80" placeholder="Your city" class="full">
+      <label class="full">Photos (up to 4)<input type="file" id="photoInput" accept="image/*" multiple></label>
+      <div id="photoPreview" class="thumbs full"></div>
+      <p id="listingMsg" class="status full"></p>
+      <button class="btn primary full" type="submit" id="postBtn">Post listing</button>
     </form>
     <div class="row">
       <input id="listingFilter" placeholder="Filter by card, seller or city">
+      <select id="catFilter"><option value="">All kinds</option><option value="single">Singles</option><option value="lot">Bulk lots</option><option value="deck">Decks</option></select>
       <select id="typeFilter"><option value="">All</option><option>For sale</option><option>For trade</option><option>Looking for</option></select>
     </div>
     <div id="listings" class="grid"></div>

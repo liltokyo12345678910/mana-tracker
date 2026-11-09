@@ -227,17 +227,19 @@ $('#marketGrid').addEventListener('click', (e) => {
   if (!b) return;
   if (!requireLogin('Sign in to list a card.')) return;
   showTab('trade');
+  openListingForm();
+  setCat('single');
   const f = $('#listingForm');
-  f.classList.remove('hidden');
   f.card.value = b.dataset.quick;
   f.price.value = b.dataset.usd ? `$${b.dataset.usd}` : '';
-  f.city.value = profile?.city || '';
+  lookupCard(b.dataset.quick);
 });
 $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); const v = $('#searchInput').value.trim(); if (v) runSearch(v); });
 $$('.chip').forEach((c) => c.addEventListener('click', () => runSearch(c.dataset.q)));
 
 // ---------- Listings ----------
 let listings = [];
+const CAT_LABEL = { single: 'Single', lot: 'Bulk lot', deck: 'Deck' };
 async function loadListings() {
   $('#listings').innerHTML = '<p class="status">Loading listings...</p>';
   const { data, error } = await sb.from('listings').select('*, profiles(username, city, avatar_url)').order('created_at', { ascending: false }).limit(200);
@@ -247,12 +249,18 @@ async function loadListings() {
 }
 function listingCard(l, mine) {
   const seller = l.profiles?.username || 'player';
+  const photos = l.photos || [];
+  const cover = photos[0] || l.card_image;
+  const coverCls = !photos[0] && l.card_image ? 'cover cardimg' : 'cover';
   return `<div class="card">
-    <span class="badge">${esc(l.type)}</span>
+    ${cover ? `<a href="${esc(cover)}" target="_blank" rel="noopener"><img class="${coverCls}" loading="lazy" src="${esc(cover)}" alt="${esc(l.card)}"></a>` : ''}
+    ${photos.length > 1 ? `<div class="thumbs">${photos.slice(1).map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="photo"></a>`).join('')}</div>` : ''}
+    <div><span class="badge">${esc(l.type)}</span><span class="badge cat">${CAT_LABEL[l.category] || 'Single'}</span></div>
     <div class="name">${esc(l.card)}</div>
     <div class="price">${esc(l.price || '')}</div>
-    <div class="meta who">${avatarHtml(l.profiles)} @${esc(seller)}</div>
-    <div class="meta">${esc(l.condition || '')}${l.city ? ' · ' + esc(l.city) : ''}</div>
+    ${l.category === 'lot' && l.quantity ? `<div class="meta">${Number(l.quantity).toLocaleString()} cards</div>` : ''}
+    ${l.category === 'single' && l.condition ? `<div class="meta">${esc(l.condition)}</div>` : ''}
+    <div class="meta who">${avatarHtml(l.profiles)} @${esc(seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
     <div class="meta">${ago(l.created_at)}</div>
     ${mine ? `<button class="btn" data-del="${l.id}">Remove listing</button>`
       : (user && l.user_id === user.id ? '<span class="meta">Your listing</span>'
@@ -262,26 +270,137 @@ function listingCard(l, mine) {
 function renderListings() {
   const f = $('#listingFilter').value.toLowerCase();
   const t = $('#typeFilter').value;
-  const shown = listings.filter((l) => (!t || l.type === t) && (l.card + ' ' + (l.profiles?.username || '') + ' ' + (l.city || '')).toLowerCase().includes(f));
+  const k = $('#catFilter').value;
+  const shown = listings.filter((l) => (!t || l.type === t) && (!k || (l.category || 'single') === k) && (l.card + ' ' + (l.profiles?.username || '') + ' ' + (l.city || '')).toLowerCase().includes(f));
   $('#listings').innerHTML = shown.map((l) => listingCard(l, false)).join('') || '<p class="status">No listings yet. Be the first to post one!</p>';
+}
+
+// Selling form: single card / bulk lot / deck
+let listCat = 'single';
+let foundCard = null;   // card matched on Scryfall
+let photoFiles = [];
+function setCat(cat) {
+  listCat = cat;
+  $$('.seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.cat === cat));
+  $$('.cat').forEach((el) => el.classList.toggle('hidden', !el.classList.contains('cat-' + cat)));
+}
+$$('.seg-btn').forEach((b) => b.addEventListener('click', () => setCat(b.dataset.cat)));
+function openListingForm() {
+  const f = $('#listingForm');
+  f.classList.remove('hidden');
+  if (!f.city.value) f.city.value = profile?.city || '';
 }
 $('#newListingBtn').addEventListener('click', () => {
   if (!requireLogin('Sign in to list a card.')) return;
   const f = $('#listingForm');
-  f.classList.toggle('hidden');
-  if (!f.city.value) f.city.value = profile?.city || '';
+  if (f.classList.contains('hidden')) openListingForm(); else f.classList.add('hidden');
 });
+
+// Card name autocomplete and lookup (Scryfall)
+let acTimer, lookupTimer;
+$('#cardSearch').addEventListener('input', (e) => {
+  foundCard = null;
+  const q = e.target.value.trim();
+  clearTimeout(acTimer); clearTimeout(lookupTimer);
+  if (q.length < 2) { $('#cardFound').innerHTML = ''; return; }
+  acTimer = setTimeout(async () => {
+    try {
+      const r = await (await fetch('https://api.scryfall.com/cards/autocomplete?q=' + encodeURIComponent(q))).json();
+      $('#cardSuggest').innerHTML = (r.data || []).slice(0, 10).map((n) => `<option value="${esc(n)}">`).join('');
+    } catch {}
+  }, 250);
+  lookupTimer = setTimeout(() => lookupCard(q), 900);
+});
+$('#cardSearch').addEventListener('change', (e) => lookupCard(e.target.value.trim()));
+async function lookupCard(q) {
+  if (!q) return;
+  $('#cardFound').textContent = 'Finding card...';
+  try {
+    const res = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(q));
+    const c = await res.json();
+    if (c.object !== 'card') { foundCard = null; $('#cardFound').textContent = 'Card not found. Check the spelling.'; return; }
+    const img = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal || '';
+    foundCard = { name: c.name, id: c.id, image: img, usd: c.prices?.usd };
+    $('#cardFound').innerHTML = `${img ? `<img src="${img}" alt="">` : ''}<div><b>${esc(c.name)}</b><br>${esc(c.set_name)}${c.prices?.usd ? '<br>Market price: $' + c.prices.usd : ''}</div>`;
+    if ($('#cardSearch').value.trim().toLowerCase() !== c.name.toLowerCase()) $('#cardSearch').value = c.name;
+  } catch { $('#cardFound').textContent = 'Could not look up that card right now.'; }
+}
+
+// Photos
+$('#photoInput').addEventListener('change', (e) => {
+  photoFiles = [...e.target.files].slice(0, 4);
+  $('#photoPreview').innerHTML = photoFiles.map((f) => `<img src="${URL.createObjectURL(f)}" alt="">`).join('');
+  if (e.target.files.length > 4) $('#listingMsg').textContent = 'Only the first 4 photos will be used.';
+});
+function resizeTo(file, max = 1200) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const r = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not process image'))), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => reject(new Error('One of the photos is not a supported image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function uploadPhotos() {
+  const urls = [];
+  for (let i = 0; i < photoFiles.length; i++) {
+    const blob = await resizeTo(photoFiles[i]);
+    const path = `${user.id}/${Date.now()}-${i}.jpg`;
+    const { error } = await sb.storage.from('listing-photos').upload(path, blob, { contentType: 'image/jpeg' });
+    if (error) throw error;
+    urls.push(sb.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
+  }
+  return urls;
+}
+
 $('#listingForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const d = Object.fromEntries(new FormData(e.target));
-  const { error } = await sb.from('listings').insert({ card: d.card.trim(), type: d.type, price: d.price.trim() || null, condition: d.condition, city: d.city.trim() || null });
-  if (error) { alert('Could not post: ' + error.message); return; }
-  e.target.reset();
-  e.target.classList.add('hidden');
-  loadListings();
+  const f = e.target;
+  const msg = $('#listingMsg');
+  const type = f.type.value;
+  const price = f.price.value.trim();
+  const needPhotos = type !== 'Looking for';
+  const row = { category: listCat, type, price: price || null, city: f.city.value.trim() || null };
+  if (listCat === 'single') {
+    if (!foundCard) await lookupCard(f.card.value.trim());
+    if (!foundCard) { msg.textContent = 'Type a card name and pick the right card first.'; return; }
+    Object.assign(row, { card: foundCard.name, scryfall_id: foundCard.id, card_image: foundCard.image, condition: f.condition.value });
+  } else if (listCat === 'lot') {
+    const qty = parseInt(f.quantity.value, 10);
+    if (!qty || qty < 1) { msg.textContent = 'Enter how many cards are in the lot.'; return; }
+    Object.assign(row, { card: f.lot_title.value.trim() || `${qty} card bulk lot`, quantity: qty });
+  } else {
+    const name = f.deck_name.value.trim();
+    if (!name) { msg.textContent = 'Enter the deck name.'; return; }
+    row.card = name;
+  }
+  if (!price) { msg.textContent = type === 'For trade' ? 'Say what you want in trade.' : 'Enter how much you want for it.'; return; }
+  if (needPhotos && !photoFiles.length) { msg.textContent = 'Add at least one photo.'; return; }
+  $('#postBtn').disabled = true;
+  msg.textContent = photoFiles.length ? 'Uploading photos...' : 'Posting...';
+  try {
+    row.photos = await uploadPhotos();
+    const { error } = await sb.from('listings').insert(row);
+    if (error) throw error;
+    f.reset(); photoFiles = []; foundCard = null;
+    $('#photoPreview').innerHTML = ''; $('#cardFound').innerHTML = '';
+    msg.textContent = '';
+    f.classList.add('hidden');
+    setCat('single');
+    loadListings();
+  } catch (err) {
+    msg.textContent = 'Could not post: ' + (err.message || err);
+  }
+  $('#postBtn').disabled = false;
 });
 $('#listingFilter').addEventListener('input', renderListings);
 $('#typeFilter').addEventListener('change', renderListings);
+$('#catFilter').addEventListener('change', renderListings);
 async function loadMyListings() {
   const { data } = await sb.from('listings').select('*, profiles(username, city, avatar_url)').eq('user_id', user.id).order('created_at', { ascending: false });
   $('#myListings').innerHTML = (data || []).map((l) => listingCard(l, true)).join('') || '<p class="status">You have no listings yet.</p>';
