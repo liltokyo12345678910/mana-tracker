@@ -150,3 +150,12 @@ textarea{background:#0b0e1a;color:var(--text);border:1px solid var(--line);borde
 .hidden-card.found{background:#1f7a3f;animation:none;box-shadow:none}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
 .lotus-foil{animation:shine 2.5s linear infinite}
+
+.coll-total{color:var(--muted)}.coll-total b{color:var(--accent)}
+.scan-btn{text-align:center;font-size:1.1rem;padding:14px}
+.found-card{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:14px;align-items:start;margin-top:10px}
+.found-card img{width:100%;border-radius:10px}
+.found-card select,.found-card input[type=number]{width:100%}
+.qty{display:flex;align-items:center;gap:10px}.qty .btn{padding:4px 12px}
+.foil-img{animation:shine 4s linear infinite}
+@media (max-width:560px){.found-card{grid-template-columns:1fr}.found-card img{max-width:240px;margin:0 auto}}

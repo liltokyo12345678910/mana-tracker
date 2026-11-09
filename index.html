@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1220">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20261109b">
+<link rel="stylesheet" href="style.css?v=20261109c">
 </head>
 <body>
 <header class="topbar">
@@ -23,6 +23,7 @@
     <button class="tab" data-tab="news">News</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="trade">Buy &amp; Trade</button>
+    <button class="tab" data-tab="collection">My Cards</button>
     <button class="tab" data-tab="chat">Chat <span id="unreadDot" class="dot hidden"></span></button>
     <button class="tab" data-tab="map">Map</button>
     <button class="tab" data-tab="account" id="accountTab">Sign in</button>
@@ -175,6 +176,31 @@
     <p class="small">Mana Tracker doesn't handle payments. Buyers and sellers arrange payment and shipping themselves. Meet in public places and use protected payment methods.</p>
   </section>
 
+  <!-- COLLECTION -->
+  <section id="collection" class="panel">
+    <div class="row between"><h2>My collection</h2><div id="collTotal" class="coll-total"></div></div>
+    <p id="collGate" class="status hidden">Sign in to save your collection online. <a href="#" data-goto-account>Sign in</a></p>
+    <div id="collWrap">
+      <div class="box stack">
+        <label class="btn primary scan-btn" for="scanInput">&#128247; Scan a card</label>
+        <input type="file" id="scanInput" accept="image/*" capture="environment" class="hidden">
+        <p class="small">Take a clear photo of one card, straight on, with the name at the top in focus.</p>
+        <div id="scanStatus" class="status"></div>
+        <form id="collFindForm" class="row">
+          <input id="collSearch" list="collSuggest" placeholder="Or type a card name" autocomplete="off" maxlength="150">
+          <datalist id="collSuggest"></datalist>
+          <button class="btn" type="submit">Find</button>
+        </form>
+        <div id="collFound"></div>
+      </div>
+      <div class="row">
+        <input id="collFilter" placeholder="Search your collection">
+        <select id="collSort"><option value="new">Newest</option><option value="value">Most valuable</option><option value="name">Name A-Z</option></select>
+      </div>
+      <div id="collList" class="grid"></div>
+    </div>
+  </section>
+
   <!-- CHAT -->
   <section id="chat" class="panel">
     <h2>Messages</h2>
@@ -227,6 +253,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20261109b"></script>
+<script src="app.js?v=20261109c"></script>
 </body>
 </html>

@@ -32,6 +32,7 @@ function showTab(id) {
   if (id === 'market' && !$('#marketGrid').children.length) runSearch('usd>1000');
   if (id === 'trade') loadListings();
   if (id === 'news') loadNews();
+  if (id === 'collection') loadCollection();
   if (id === 'chat') { $('#unreadDot').classList.add('hidden'); loadConvos(); }
   if (id === 'account' && user) loadMyListings();
   window.scrollTo(0, 0);
@@ -985,3 +986,183 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('[data-lotus]')) claimHidden('lotus', 'Black Lotus', 'Secret menu', true);
 });
 sb.auth.onAuthStateChange(() => { setTimeout(async () => { await loadMyFinds(); drawHidden(); }, 50); });
+
+// ---------- My Cards: online collection + card scanner ----------
+let coll = [];
+let collCard = null;
+const money = (n) => '$' + (Number(n) || 0).toFixed(2);
+function cardImg(c) { return c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal || ''; }
+async function loadCollection() {
+  $('#collGate').classList.toggle('hidden', !!user);
+  $('#collWrap').classList.toggle('hidden', !user);
+  if (!user) { coll = []; $('#collTotal').textContent = ''; return; }
+  const { data, error } = await sb.from('collection').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+  if (error) { $('#collList').innerHTML = '<p class="status">Could not load your collection.</p>'; return; }
+  coll = data || [];
+  renderCollection();
+}
+function renderCollection() {
+  const f = $('#collFilter').value.toLowerCase();
+  const sort = $('#collSort').value;
+  let rows = coll.filter((r) => !f || (r.name + ' ' + (r.set_name || '')).toLowerCase().includes(f));
+  if (sort === 'value') rows = [...rows].sort((a, b) => (b.price_usd || 0) * b.quantity - (a.price_usd || 0) * a.quantity);
+  if (sort === 'name') rows = [...rows].sort((a, b) => a.name.localeCompare(b.name));
+  const count = coll.reduce((s, r) => s + r.quantity, 0);
+  const value = coll.reduce((s, r) => s + (Number(r.price_usd) || 0) * r.quantity, 0);
+  $('#collTotal').innerHTML = `<b>${count.toLocaleString()}</b> cards · <b>${money(value)}</b>`;
+  $('#collList').innerHTML = rows.map((r) => `<div class="card coll-card">
+    ${r.image ? `<img class="cover cardimg${r.foil ? ' foil-img' : ''}" loading="lazy" src="${esc(r.image)}" alt="${esc(r.name)}">` : ''}
+    <div class="name">${esc(r.name)}${r.foil ? ' <span class="badge">Foil</span>' : ''}</div>
+    <div class="meta">${esc(r.set_name || '')} · ${esc(r.condition || '')}</div>
+    <div class="meta">${r.price_usd != null ? money(r.price_usd) + ' each · ' + money(r.price_usd * r.quantity) + ' total' : 'No price'}</div>
+    <div class="qty"><button class="btn" data-cq="${r.id}" data-d="-1">-</button><b>${r.quantity}</b><button class="btn" data-cq="${r.id}" data-d="1">+</button></div>
+    <button class="btn danger" data-crm="${r.id}">Remove</button>
+  </div>`).join('') || '<p class="status">No cards yet. Scan a card or type a name to start your collection.</p>';
+}
+$('#collFilter').addEventListener('input', renderCollection);
+$('#collSort').addEventListener('change', renderCollection);
+document.addEventListener('click', async (e) => {
+  const q = e.target.closest('[data-cq]');
+  if (q) {
+    const r = coll.find((x) => String(x.id) === q.dataset.cq); if (!r) return;
+    const n = r.quantity + Number(q.dataset.d);
+    if (n < 1) { if (!confirm('Remove ' + r.name + ' from your collection?')) return; await sb.from('collection').delete().eq('id', r.id); coll = coll.filter((x) => x !== r); }
+    else { await sb.from('collection').update({ quantity: n }).eq('id', r.id); r.quantity = n; }
+    renderCollection();
+  }
+  const rm = e.target.closest('[data-crm]');
+  if (rm) {
+    const r = coll.find((x) => String(x.id) === rm.dataset.crm);
+    if (r && confirm('Remove ' + r.name + ' from your collection?')) { await sb.from('collection').delete().eq('id', r.id); coll = coll.filter((x) => x !== r); renderCollection(); }
+  }
+});
+// Name autocomplete
+let collAcTimer;
+$('#collSearch').addEventListener('input', () => {
+  clearTimeout(collAcTimer);
+  const v = $('#collSearch').value.trim();
+  if (v.length < 2) return;
+  collAcTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('https://api.scryfall.com/cards/autocomplete?q=' + encodeURIComponent(v));
+      const d = await r.json();
+      $('#collSuggest').innerHTML = (d.data || []).slice(0, 15).map((n) => `<option value="${esc(n)}">`).join('');
+    } catch (err) { /* ignore */ }
+  }, 250);
+});
+async function fuzzyCard(name) {
+  const r = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name));
+  if (!r.ok) return null;
+  const c = await r.json();
+  return c.object === 'card' ? c : null;
+}
+$('#collFindForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = $('#collSearch').value.trim(); if (!v) return;
+  $('#collFound').innerHTML = '<p class="status">Looking it up...</p>';
+  const c = await fuzzyCard(v);
+  if (!c) { $('#collFound').innerHTML = '<p class="status">Could not find that card. Check the spelling.</p>'; return; }
+  showFound(c);
+});
+async function showFound(c) {
+  collCard = c;
+  let prints = [c];
+  try {
+    const r = await fetch(c.prints_search_uri);
+    const d = await r.json();
+    if (d.data && d.data.length) prints = d.data.filter((p) => !p.digital).slice(0, 80);
+    if (!prints.some((p) => p.id === c.id)) prints.unshift(c);
+  } catch (err) { /* keep single print */ }
+  collCard._prints = prints;
+  $('#collFound').innerHTML = `<div class="found-card">
+    <img id="fcImg" src="${esc(cardImg(c))}" alt="${esc(c.name)}">
+    <div class="stack">
+      <div class="name">${esc(c.name)}</div>
+      <label>Printing<select id="fcPrint">${prints.map((p) => `<option value="${p.id}" ${p.id === c.id ? 'selected' : ''}>${esc(p.set_name)} (${esc(p.set.toUpperCase())} #${esc(p.collector_number)})</option>`).join('')}</select></label>
+      <label class="check"><input type="checkbox" id="fcFoil"> Foil</label>
+      <label>Condition<select id="fcCond"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Damaged</option></select></label>
+      <label>Quantity<input id="fcQty" type="number" min="1" max="1000" value="1"></label>
+      <div id="fcPrice" class="price"></div>
+      <button class="btn primary" id="fcAdd" type="button">Add to collection</button>
+      <p id="fcMsg" class="small"></p>
+    </div></div>`;
+  const upd = () => {
+    const p = prints.find((x) => x.id === $('#fcPrint').value) || c;
+    $('#fcImg').src = cardImg(p);
+    const price = $('#fcFoil').checked ? p.prices?.usd_foil : p.prices?.usd;
+    $('#fcPrice').textContent = price ? money(price) + ' each' : 'No price listed';
+  };
+  $('#fcPrint').addEventListener('change', upd);
+  $('#fcFoil').addEventListener('change', upd);
+  upd();
+  $('#fcAdd').addEventListener('click', addFound);
+}
+async function addFound() {
+  if (!user) { requireLogin('Sign in to save your collection.'); return; }
+  const p = collCard._prints.find((x) => x.id === $('#fcPrint').value) || collCard;
+  const foil = $('#fcFoil').checked;
+  const condition = $('#fcCond').value;
+  const qty = Math.max(1, Math.min(1000, parseInt($('#fcQty').value, 10) || 1));
+  const price = foil ? p.prices?.usd_foil : p.prices?.usd;
+  $('#fcAdd').disabled = true; $('#fcMsg').textContent = 'Adding...';
+  const existing = coll.find((r) => r.scryfall_id === p.id && r.foil === foil && r.condition === condition);
+  let error;
+  if (existing) ({ error } = await sb.from('collection').update({ quantity: existing.quantity + qty, price_usd: price ? Number(price) : existing.price_usd }).eq('id', existing.id));
+  else ({ error } = await sb.from('collection').insert({ scryfall_id: p.id, name: p.name, set_name: p.set_name, set_code: p.set, image: cardImg(p), price_usd: price ? Number(price) : null, quantity: qty, foil, condition }));
+  $('#fcAdd').disabled = false;
+  if (error) { $('#fcMsg').textContent = 'Could not add: ' + error.message; return; }
+  $('#fcMsg').textContent = `Added ${qty} x ${p.name} to your collection!`;
+  $('#scanStatus').textContent = '';
+  loadCollection();
+}
+// Card scanner: photo -> read the name with OCR -> match it on Scryfall
+let tesseractLoading = null;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!tesseractLoading) tesseractLoading = new Promise((ok, fail) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+  return tesseractLoading;
+}
+function fileToImage(file) {
+  return new Promise((ok, fail) => { const img = new Image(); img.onload = () => ok(img); img.onerror = fail; img.src = URL.createObjectURL(file); });
+}
+function cropCanvas(img, y0, y1, x0 = 0.03, x1 = 0.97) {
+  const W = 1400, scale = W / img.width, H = img.height * scale;
+  const cv = document.createElement('canvas');
+  cv.width = W * (x1 - x0); cv.height = H * (y1 - y0);
+  const ctx = cv.getContext('2d');
+  ctx.filter = 'grayscale(1) contrast(1.6)';
+  ctx.drawImage(img, img.width * x0, img.height * y0, img.width * (x1 - x0), img.height * (y1 - y0), 0, 0, cv.width, cv.height);
+  return cv;
+}
+function candidates(text) {
+  return text.split('\n').map((l) => l.replace(/[^A-Za-z',\- ]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((l) => l.length >= 3 && /[A-Za-z]{3}/.test(l))
+    .sort((a, b) => b.length - a.length).slice(0, 6);
+}
+$('#scanInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  if (!user) { requireLogin('Sign in to save your collection.'); return; }
+  $('#collFound').innerHTML = '';
+  $('#scanStatus').textContent = 'Loading the scanner...';
+  try {
+    await loadTesseract();
+    const img = await fileToImage(file);
+    const worker = await Tesseract.createWorker('eng');
+    // Try the name bar at the top of the card first, then wider areas in case the photo isn't tightly cropped
+    const areas = [[0.02, 0.13], [0.0, 0.25], [0.0, 0.6]];
+    for (let i = 0; i < areas.length; i++) {
+      $('#scanStatus').textContent = `Reading the card name${i ? ' (try ' + (i + 1) + ')' : ''}...`;
+      const { data } = await worker.recognize(cropCanvas(img, areas[i][0], areas[i][1]));
+      for (const cand of candidates(data.text)) {
+        const c = await fuzzyCard(cand);
+        if (c) { await worker.terminate(); $('#scanStatus').textContent = 'Found it! Check the printing, then add it.'; showFound(c); return; }
+      }
+    }
+    await worker.terminate();
+    $('#scanStatus').textContent = "Couldn't read that card. Try again with better light and the name in focus, or type the name below.";
+  } catch (err) {
+    $('#scanStatus').textContent = 'The scanner had a problem. Try again, or type the card name below.';
+  }
+});
+sb.auth.onAuthStateChange(() => { setTimeout(() => { if ($('#collection').classList.contains('active')) loadCollection(); else { coll = []; $('#collList').innerHTML = ''; } }, 60); });
