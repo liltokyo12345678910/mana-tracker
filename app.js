@@ -903,7 +903,7 @@ $('#storesToggle').addEventListener('change', loadStores);
 function closeModalIfNot() {}
 $('#findForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const q = $('#findInput').value.trim().replace(/[%_,()]/g, '');
+  const q = $('#findInput').value.trim().replace(/[%,()*]/g, '');
   if (!q) { $('#findList').innerHTML = ''; return; }
   $('#findList').innerHTML = '<p class="status">Searching...</p>';
   const { data } = await sb.from('profiles').select('id, username, city, deck, avatar_url').ilike('username', '%' + q + '%').limit(24);
