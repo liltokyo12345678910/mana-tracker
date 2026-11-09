@@ -262,8 +262,8 @@ function listingCard(l, mine) {
     ${l.category === 'single' && l.condition ? `<div class="meta">${esc(l.condition)}</div>` : ''}
     <div class="meta who">${avatarHtml(l.profiles)} @${esc(seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
     <div class="meta">${ago(l.created_at)}</div>
-    ${mine ? `<button class="btn" data-del="${l.id}">Remove listing</button>`
-      : (user && l.user_id === user.id ? '<span class="meta">Your listing</span>'
+    ${mine || (user && l.user_id === user.id) ? `<button class="btn danger" data-del="${l.id}">Take down post</button>`
+      : (false ? ''
       : `<button class="btn" data-msg="${l.user_id}" data-card="${esc(l.card)}" data-listing="${l.id}">Message seller</button>`)}
   </div>`;
 }
@@ -330,6 +330,7 @@ async function lookupCard(q) {
 $('#photoInput').addEventListener('change', (e) => {
   photoFiles = [...e.target.files].slice(0, 4);
   $('#photoPreview').innerHTML = photoFiles.map((f) => `<img src="${URL.createObjectURL(f)}" alt="">`).join('');
+  $('#photoCount').textContent = photoFiles.length ? `${photoFiles.length} photo${photoFiles.length > 1 ? 's' : ''} added` : 'No photos added yet';
   if (e.target.files.length > 4) $('#listingMsg').textContent = 'Only the first 4 photos will be used.';
 });
 function resizeTo(file, max = 1200) {
@@ -388,7 +389,7 @@ $('#listingForm').addEventListener('submit', async (e) => {
     const { error } = await sb.from('listings').insert(row);
     if (error) throw error;
     f.reset(); photoFiles = []; foundCard = null;
-    $('#photoPreview').innerHTML = ''; $('#cardFound').innerHTML = '';
+    $('#photoPreview').innerHTML = ''; $('#cardFound').innerHTML = ''; $('#photoCount').textContent = 'No photos added yet';
     msg.textContent = '';
     f.classList.add('hidden');
     setCat('single');
@@ -407,9 +408,12 @@ async function loadMyListings() {
 }
 document.addEventListener('click', async (e) => {
   const del = e.target.closest('[data-del]');
-  if (del && confirm('Remove this listing?')) {
-    await sb.from('listings').delete().eq('id', del.dataset.del);
-    loadMyListings();
+  if (del && confirm('Take down this post?')) {
+    const { error } = await sb.from('listings').delete().eq('id', del.dataset.del);
+    if (error) { alert('Could not take down post: ' + error.message); return; }
+    listings = listings.filter((l) => String(l.id) !== del.dataset.del);
+    renderListings();
+    if (user) loadMyListings();
   }
   const msg = e.target.closest('[data-msg]');
   if (msg) {

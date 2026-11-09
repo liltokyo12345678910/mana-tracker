@@ -91,3 +91,7 @@ footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 .card .cover.cardimg{aspect-ratio:auto;object-fit:contain}
 .card .thumbs img{width:44px;height:44px}
 .badge.cat{background:#22284a;border:1px solid var(--line);margin-left:4px}
+
+.photo-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.photo-btn{background:#22284a;border:2px dashed var(--accent);color:var(--text);text-align:center;cursor:pointer}
+.btn.danger{background:#5c1f2a;border-color:#a33;color:#fff}

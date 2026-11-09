@@ -134,7 +134,7 @@
       </div>
       <input name="price" maxlength="120" placeholder="Price you want (e.g. $25) or what you want in trade" class="full">
       <input name="city" maxlength="80" placeholder="Your city" class="full">
-      <label class="full">Photos (up to 4)<input type="file" id="photoInput" accept="image/*" multiple></label>
+      <div class="full photo-pick"><label for="photoInput" class="btn photo-btn">&#128247; Add photos (up to 4)</label><input type="file" id="photoInput" accept="image/*" multiple class="hidden"><span id="photoCount" class="small">No photos added yet</span></div>
       <div id="photoPreview" class="thumbs full"></div>
       <p id="listingMsg" class="status full"></p>
       <button class="btn primary full" type="submit" id="postBtn">Post listing</button>
