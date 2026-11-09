@@ -139,3 +139,14 @@ textarea{background:#0b0e1a;color:var(--text);border:1px solid var(--line);borde
 .leader{text-align:left;display:inline-block}
 .store-dot{width:26px;height:26px;border-radius:6px;background:#1e3a5f;border:2px solid var(--accent);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px}
 @media (max-width:560px){.pstats{grid-template-columns:repeat(2,1fr)}.game-opts{grid-template-columns:1fr}}
+
+.pmenu{display:inline-block;margin-top:10px}
+.pmenu .pop{left:0;right:auto}
+.pbadge.lotus{background:linear-gradient(90deg,#111,#6c5ce7,#111);color:#fff;border-color:#a29bfe}
+.collection{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+.coll-item img{width:100%;border-radius:8px;display:block}
+.coll-item.foil img{box-shadow:0 0 14px #a29bfe;animation:shine 3s linear infinite}
+.hidden-card{width:30px;height:42px;border-radius:5px;background:linear-gradient(135deg,#3b2a1a,#7a5230);border:2px solid var(--accent);color:var(--accent);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 0 12px var(--accent);animation:pulse 1.6s ease-in-out infinite}
+.hidden-card.found{background:#1f7a3f;animation:none;box-shadow:none}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.lotus-foil{animation:shine 2.5s linear infinite}

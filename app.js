@@ -579,7 +579,7 @@ function subscribeMessages() {
 function unsubscribeMessages() { if (channel) { sb.removeChannel(channel); channel = null; } }
 
 // ---------- Map ----------
-let map, playerLayer, meMarker, storeLayer, storeTimer;
+let map, playerLayer, meMarker, storeLayer, storeTimer, hiddenLayer;
 let myPos = null;
 function initMap() {
   if (mapReady) { setTimeout(() => map.invalidateSize(), 100); loadMapPlayers(); return; }
@@ -588,6 +588,8 @@ function initMap() {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
   playerLayer = L.layerGroup().addTo(map);
   storeLayer = L.layerGroup().addTo(map);
+  hiddenLayer = L.layerGroup().addTo(map);
+  map.on('moveend', drawHidden);
   map.on('moveend', () => { clearTimeout(storeTimer); storeTimer = setTimeout(loadStores, 700); });
   loadMapPlayers();
 }
@@ -693,6 +695,7 @@ async function openProfile(id) {
     sb.from('easter_eggs').select('*').eq('user_id', id).maybeSingle(),
     sb.from('listings').select('*, profiles(username, city, avatar_url)').eq('user_id', id).order('created_at', { ascending: false }).limit(60),
   ]);
+  const { data: finds } = await sb.from('hidden_finds').select('spot, card, found_at').eq('user_id', id).order('found_at');
   if (openProfileId !== id) return;
   if (!p) { $('#modalBody').innerHTML = '<p class="status">Profile not found.</p>'; return; }
   const c = (counts && counts[0]) || { followers: 0, following: 0 };
@@ -710,13 +713,17 @@ async function openProfile(id) {
       <div><h2>@${esc(p.username)}</h2>
       ${p.city ? `<div class="meta">${esc(p.city)}</div>` : ''}
       ${p.note ? `<div class="pnote">"${esc(p.note)}"</div>` : ''}</div></div>
-    ${badgesHtml(egg)}
+    ${badgesHtml(egg)}${(finds || []).some((f) => f.spot === 'lotus') ? '<div class="pbadges"><span class="pbadge lotus">Foil Black Lotus</span></div>' : ''}
+    ${p.username === 'Young_mav_hallow' ? `<div class="egg-wrap pmenu"><button class="btn icon" data-pmenu aria-label="Menu" title="Menu">&#9776;</button>
+      <div class="pop hidden pdots"><button class="btn icon" data-pdots aria-label="More" title="More">&#8943;</button></div>
+      <div class="pop menu hidden plotus"><div class="small">Secret found</div><button class="btn primary" data-lotus>Claim foil Black Lotus</button></div></div>` : ''}
     <div class="pstats">
       <div><b>${c.followers}</b><span>Followers</span></div>
       <div><b>${c.following}</b><span>Following</span></div>
       <div><b>${listingsAll.length}</b><span>Listings</span></div>
       <div><b>${decks.length + (p.deck ? 1 : 0)}</b><span>Decks</span></div>
     </div>
+    <div class="meta">Hidden cards found: <b>${(finds || []).filter((f) => f.spot !== 'lotus').length}/50</b> state capitals</div>
     ${me ? '<p class="small">This is how other players see your profile.</p>' : `<div class="row">
       ${following ? `<button class="btn" data-unadd="${p.id}">Remove friend</button>` : `<button class="btn primary" data-add="${p.id}">+ Add friend</button>`}
       <button class="btn" data-msg="${p.id}">Message</button></div>`}
@@ -724,6 +731,7 @@ async function openProfile(id) {
     ${p.deck ? `<div class="card main-deck"><div class="meta">Main deck / commander</div><div class="name">${esc(p.deck)}</div></div>` : ''}
     ${decks.length ? `<div class="grid">${decks.map((l) => listingCard(l)).join('')}</div>` : (p.deck ? '' : '<p class="status">No decks yet.</p>')}
     ${egg?.rare_card ? `<h3>One-of-a-kind card</h3>${rareCardHtml(egg.rare_card)}` : ''}
+    ${finds && finds.length ? `<h3>Hidden card collection</h3><div class="collection">${finds.map((f) => `<div class="coll-item ${f.spot === 'lotus' ? 'foil' : ''}"><img src="${esc(f.card.image)}" alt="${esc(f.card.name)}" loading="lazy"><div class="meta">${esc(f.card.name)}${f.card.where ? '<br>' + esc(f.card.where) : ''}</div></div>`).join('')}</div>` : ''}
     <h3>Listings</h3>
     ${other.length ? `<div class="grid">${other.map((l) => listingCard(l)).join('')}</div>` : '<p class="status">No listings yet.</p>'}
   </div>`;
@@ -921,3 +929,57 @@ $('#findForm').addEventListener('submit', async (e) => {
 document.addEventListener('click', (e) => {
   if (e.target.closest('#findList [data-add], #findList [data-unadd]')) setTimeout(() => $('#findForm').requestSubmit(), 600);
 });
+
+// ---------- Hidden cards: foil Black Lotus on the owner's profile + one in every state capital ----------
+const CAPITALS = [{"s": "AL", "city": "Montgomery", "lat": 32.3777, "lng": -86.3006, "card": "Mox Pearl"}, {"s": "AK", "city": "Juneau", "lat": 58.3019, "lng": -134.4197, "card": "Tundra"}, {"s": "AZ", "city": "Phoenix", "lat": 33.4484, "lng": -112.074, "card": "Arclight Phoenix"}, {"s": "AR", "city": "Little Rock", "lat": 34.7465, "lng": -92.2896, "card": "Mox Jet"}, {"s": "CA", "city": "Sacramento", "lat": 38.5767, "lng": -121.4934, "card": "The One Ring"}, {"s": "CO", "city": "Denver", "lat": 39.7392, "lng": -104.9903, "card": "Plateau"}, {"s": "CT", "city": "Hartford", "lat": 41.7637, "lng": -72.6851, "card": "Ancestral Recall"}, {"s": "DE", "city": "Dover", "lat": 39.1582, "lng": -75.5244, "card": "Sol Ring"}, {"s": "FL", "city": "Tallahassee", "lat": 30.4383, "lng": -84.2807, "card": "Savannah"}, {"s": "GA", "city": "Atlanta", "lat": 33.749, "lng": -84.388, "card": "Mox Ruby"}, {"s": "HI", "city": "Honolulu", "lat": 21.3069, "lng": -157.8583, "card": "Tropical Island"}, {"s": "ID", "city": "Boise", "lat": 43.615, "lng": -116.2023, "card": "Gaea's Cradle"}, {"s": "IL", "city": "Springfield", "lat": 39.7817, "lng": -89.6501, "card": "Time Walk"}, {"s": "IN", "city": "Indianapolis", "lat": 39.7684, "lng": -86.1581, "card": "Ragavan, Nimble Pilferer"}, {"s": "IA", "city": "Des Moines", "lat": 41.5868, "lng": -93.625, "card": "Craterhoof Behemoth"}, {"s": "KS", "city": "Topeka", "lat": 39.0473, "lng": -95.6752, "card": "Sylvan Library"}, {"s": "KY", "city": "Frankfort", "lat": 38.2009, "lng": -84.8733, "card": "Mox Emerald"}, {"s": "LA", "city": "Baton Rouge", "lat": 30.4515, "lng": -91.1871, "card": "Bayou"}, {"s": "ME", "city": "Augusta", "lat": 44.3106, "lng": -69.7795, "card": "Lord of Atlantis"}, {"s": "MD", "city": "Annapolis", "lat": 38.9784, "lng": -76.4922, "card": "Underground Sea"}, {"s": "MA", "city": "Boston", "lat": 42.3601, "lng": -71.0589, "card": "Jace, the Mind Sculptor"}, {"s": "MI", "city": "Lansing", "lat": 42.7325, "lng": -84.5555, "card": "Mishra's Workshop"}, {"s": "MN", "city": "Saint Paul", "lat": 44.9537, "lng": -93.09, "card": "Force of Will"}, {"s": "MS", "city": "Jackson", "lat": 32.2988, "lng": -90.1848, "card": "Dark Ritual"}, {"s": "MO", "city": "Jefferson City", "lat": 38.5767, "lng": -92.1735, "card": "Demonic Tutor"}, {"s": "MT", "city": "Helena", "lat": 46.5891, "lng": -112.0391, "card": "Taiga"}, {"s": "NE", "city": "Lincoln", "lat": 40.8136, "lng": -96.7026, "card": "Birds of Paradise"}, {"s": "NV", "city": "Carson City", "lat": 39.1638, "lng": -119.7674, "card": "Lion's Eye Diamond"}, {"s": "NH", "city": "Concord", "lat": 43.2081, "lng": -71.5376, "card": "Serra Angel"}, {"s": "NJ", "city": "Trenton", "lat": 40.2206, "lng": -74.7597, "card": "Mana Crypt"}, {"s": "NM", "city": "Santa Fe", "lat": 35.687, "lng": -105.9378, "card": "Badlands"}, {"s": "NY", "city": "Albany", "lat": 42.6526, "lng": -73.7562, "card": "Library of Alexandria"}, {"s": "NC", "city": "Raleigh", "lat": 35.7796, "lng": -78.6382, "card": "Volcanic Island"}, {"s": "ND", "city": "Bismarck", "lat": 46.8083, "lng": -100.7837, "card": "Wrath of God"}, {"s": "OH", "city": "Columbus", "lat": 39.9612, "lng": -82.9988, "card": "Timetwister"}, {"s": "OK", "city": "Oklahoma City", "lat": 35.4676, "lng": -97.5164, "card": "Bazaar of Baghdad"}, {"s": "OR", "city": "Salem", "lat": 44.9429, "lng": -123.0351, "card": "Mox Sapphire"}, {"s": "PA", "city": "Harrisburg", "lat": 40.2732, "lng": -76.8867, "card": "Necropotence"}, {"s": "RI", "city": "Providence", "lat": 41.824, "lng": -71.4128, "card": "Counterspell"}, {"s": "SC", "city": "Columbia", "lat": 34.0007, "lng": -81.0348, "card": "Scrubland"}, {"s": "SD", "city": "Pierre", "lat": 44.3683, "lng": -100.351, "card": "Grim Monolith"}, {"s": "TN", "city": "Nashville", "lat": 36.1627, "lng": -86.7816, "card": "Rhystic Study"}, {"s": "TX", "city": "Austin", "lat": 30.2672, "lng": -97.7431, "card": "Sheoldred, the Apocalypse"}, {"s": "UT", "city": "Salt Lake City", "lat": 40.7608, "lng": -111.891, "card": "Mox Diamond"}, {"s": "VT", "city": "Montpelier", "lat": 44.2601, "lng": -72.5754, "card": "Shivan Dragon"}, {"s": "VA", "city": "Richmond", "lat": 37.5407, "lng": -77.436, "card": "The Tabernacle at Pendrell Vale"}, {"s": "WA", "city": "Olympia", "lat": 47.0379, "lng": -122.9007, "card": "Cyclonic Rift"}, {"s": "WV", "city": "Charleston", "lat": 38.3498, "lng": -81.6326, "card": "Chrome Mox"}, {"s": "WI", "city": "Madison", "lat": 43.0731, "lng": -89.4012, "card": "Dockside Extortionist"}, {"s": "WY", "city": "Cheyenne", "lat": 41.14, "lng": -104.8202, "card": "Lightning Bolt"}];
+let myFinds = new Set();
+async function loadMyFinds() {
+  myFinds = new Set();
+  if (!user) return;
+  const { data } = await sb.from('hidden_finds').select('spot').eq('user_id', user.id);
+  (data || []).forEach((f) => myFinds.add(f.spot));
+}
+const cardImgCache = {};
+async function cardImage(name) {
+  if (cardImgCache[name]) return cardImgCache[name];
+  const r = await fetch('https://api.scryfall.com/cards/named?exact=' + encodeURIComponent(name));
+  const c = await r.json();
+  const img = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal || '';
+  cardImgCache[name] = { img, set_name: c.set_name };
+  return cardImgCache[name];
+}
+async function claimHidden(spot, name, where, foil) {
+  if (!user) { openModal(`<div class="egg-reveal"><h2>You found a hidden card!</h2><p>Sign in or create an account to claim it.</p><button class="btn primary" data-goto-account>Sign in</button></div>`); return; }
+  openModal('<p class="status">Claiming...</p>');
+  try {
+    const { img, set_name } = await cardImage(name);
+    const { data, error } = await sb.rpc('claim_hidden', { spot, card: { name, image: img, set_name, where, foil: !!foil } });
+    if (error) throw error;
+    myFinds.add(spot);
+    drawHidden();
+    $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>${foil ? 'Foil ' : ''}${esc(data.name)}</h2>
+      <div class="rare-card ${foil ? 'lotus-foil' : ''}" style="--hue:${foil ? 280 : 45}"><img src="${esc(data.image)}" alt="${esc(data.name)}"><div class="rare-tag">${foil ? 'FOIL' : esc(spot)}</div></div>
+      <p>${foil ? 'You found the secret foil Black Lotus!' : `Hidden card found in ${esc(where)}!`} It's now in your collection on your profile.</p>
+      ${foil ? '' : `<p class="small">You've found ${[...myFinds].filter((s) => s !== 'lotus').length} of 50 state capital cards.</p>`}</div>`;
+  } catch (err) { $('#modalBody').innerHTML = '<p class="status">Could not claim right now. Try again in a moment.</p>'; }
+}
+const hiddenIcon = (found) => L.divIcon({ className: 'hidden-pin', html: `<div class="hidden-card ${found ? 'found' : ''}">${found ? '&#10003;' : '?'}</div>`, iconSize: [30, 42], iconAnchor: [15, 21] });
+function drawHidden() {
+  if (!map || !hiddenLayer) return;
+  hiddenLayer.clearLayers();
+  if (map.getZoom() < 12) return;
+  const b = map.getBounds();
+  CAPITALS.filter((c) => b.contains([c.lat, c.lng])).forEach((c) => {
+    const found = myFinds.has(c.s);
+    L.marker([c.lat, c.lng], { icon: hiddenIcon(found) }).addTo(hiddenLayer)
+      .on('click', () => claimHidden(c.s, c.card, c.city + ', ' + c.s, false));
+  });
+}
+document.addEventListener('click', (e) => {
+  const m = e.target.closest('[data-pmenu]');
+  if (m) { e.stopPropagation(); const w = m.closest('.pmenu'); w.querySelector('.pdots').classList.toggle('hidden'); w.querySelector('.plotus').classList.add('hidden'); return; }
+  const d = e.target.closest('[data-pdots]');
+  if (d) { e.stopPropagation(); const w = d.closest('.pmenu'); w.querySelector('.plotus').classList.toggle('hidden'); w.querySelector('.pdots').classList.add('hidden'); return; }
+  if (e.target.closest('[data-lotus]')) claimHidden('lotus', 'Black Lotus', 'Secret menu', true);
+});
+sb.auth.onAuthStateChange(() => { setTimeout(async () => { await loadMyFinds(); drawHidden(); }, 50); });
