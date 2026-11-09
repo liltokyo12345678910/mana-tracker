@@ -941,20 +941,18 @@ async function loadMyFinds() {
 }
 const cardImgCache = {};
 async function cardImage(name) {
-  if (cardImgCache[name]) return cardImgCache[name];
-  const r = await fetch('https://api.scryfall.com/cards/named?exact=' + encodeURIComponent(name));
-  const c = await r.json();
-  const img = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal || '';
-  cardImgCache[name] = { img, set_name: c.set_name };
-  return cardImgCache[name];
+  // Direct Scryfall image link: no lookup call needed, so the claim never fails on a slow or rate-limited request
+  return { img: 'https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name) + '&format=image&version=normal', set_name: '' };
 }
 async function claimHidden(spot, name, where, foil) {
   if (!user) { openModal(`<div class="egg-reveal"><h2>You found a hidden card!</h2><p>Sign in or create an account to claim it.</p><button class="btn primary" data-goto-account>Sign in</button></div>`); return; }
   openModal('<p class="status">Claiming...</p>');
   try {
     const { img, set_name } = await cardImage(name);
-    const { data, error } = await sb.rpc('claim_hidden', { spot, card: { name, image: img, set_name, where, foil: !!foil } });
-    if (error) throw error;
+    let res = await sb.rpc('claim_hidden', { spot, card: { name, image: img, set_name, where, foil: !!foil } });
+    if (res.error) { await new Promise((ok) => setTimeout(ok, 1000)); res = await sb.rpc('claim_hidden', { spot, card: { name, image: img, set_name, where, foil: !!foil } }); }
+    if (res.error) throw res.error;
+    const data = res.data;
     myFinds.add(spot);
     drawHidden();
     $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>${foil ? 'Foil ' : ''}${esc(data.name)}</h2>
@@ -967,12 +965,16 @@ const hiddenIcon = (found) => L.divIcon({ className: 'hidden-pin', html: `<div c
 function drawHidden() {
   if (!map || !hiddenLayer) return;
   hiddenLayer.clearLayers();
-  if (map.getZoom() < 12) return;
+  if (map.getZoom() < 10) return;
   const b = map.getBounds();
-  CAPITALS.filter((c) => b.contains([c.lat, c.lng])).forEach((c) => {
-    const found = myFinds.has(c.s);
-    L.marker([c.lat, c.lng], { icon: hiddenIcon(found) }).addTo(hiddenLayer)
-      .on('click', () => claimHidden(c.s, c.card, c.city + ', ' + c.s, false));
+  CAPITALS.forEach((c) => {
+    // check the pin's copies across the wrapped world so Alaska, Hawaii and every state show however the map was panned
+    [0, 360, -360, 720, -720].forEach((shift) => {
+      const lng = c.lng + shift;
+      if (!b.contains([c.lat, lng])) return;
+      L.marker([c.lat, lng], { icon: hiddenIcon(myFinds.has(c.s)) }).addTo(hiddenLayer)
+        .on('click', () => claimHidden(c.s, c.card, c.city + ', ' + c.s, false));
+    });
   });
 }
 document.addEventListener('click', (e) => {
