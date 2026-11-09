@@ -607,6 +607,10 @@ async function loadMapPlayers() {
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
   playerLayer.clearLayers();
   list.forEach((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b>${p.note ? '<br><i>' + esc(p.note) + '</i>' : ''}<br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
+  // Show your own saved spot too (unless "Find players near me" already placed you)
+  if (user && profile?.show_on_map && profile.lat != null && !myPos) {
+    L.marker([profile.lat, profile.lng], { icon: pinIcon(profile, true) }).addTo(playerLayer).bindPopup('This is you' + (profile.note ? '<br><i>' + esc(profile.note) + '</i>' : ''));
+  }
   const tile = (p) => `<div class="card">
     <div class="name who">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
     <div class="meta">${esc(p.city || 'Unknown area')}${p.miles != null ? ' · about ' + p.miles.toFixed(0) + ' mi away' : ''}</div>
