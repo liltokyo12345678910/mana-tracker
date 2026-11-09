@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://liltokyo12345678910.github.io/mana-tracker/sitemap.xml
