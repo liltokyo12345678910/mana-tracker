@@ -2,15 +2,14 @@
 
 Buy, trade and track Magic: The Gathering cards.
 
-## Features (preview)
+Live site: https://liltokyo12345678910.github.io/mana-tracker/
+
+## Features
 - Live card market: prices from Scryfall (TCGplayer market data), search any card, most expensive cards
-- Buy and trade listings (demo, saved on your device)
-- Chat between buyers and sellers (demo, saved on your device)
-- Trader map: find and add players near you (demo traders)
+- Sell or trade single cards, bulk lots and decks, with photos
+- Chat between buyers and sellers
+- Trader map with profile pictures and notes: find and add players near you
 
 Payments are handled between players. Mana Tracker does not process payments.
-
-## Next step
-Connect a free Supabase project for real accounts, shared listings, live chat and real trader locations.
 
 Not affiliated with Wizards of the Coast.
