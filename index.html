@@ -15,8 +15,9 @@
     <button class="tab active" data-tab="home">Home</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="trade">Buy &amp; Trade</button>
-    <button class="tab" data-tab="chat">Chat</button>
+    <button class="tab" data-tab="chat">Chat <span id="unreadDot" class="dot hidden"></span></button>
     <button class="tab" data-tab="map">Map</button>
+    <button class="tab" data-tab="account" id="accountTab">Sign in</button>
   </nav>
 </header>
 
@@ -27,8 +28,8 @@
       <h1>Your Magic cards, all in one place</h1>
       <p>Track live card prices, list cards to buy or trade, message other players and find traders near you.</p>
       <div class="hero-actions">
-        <button class="btn primary" data-goto="market">Check prices</button>
-        <button class="btn" data-goto="trade">Browse listings</button>
+        <button class="btn primary" data-goto="account" id="heroJoin">Create free account</button>
+        <button class="btn" data-goto="market">Check prices</button>
       </div>
     </div>
     <div class="features">
@@ -37,7 +38,39 @@
       <div class="feature" data-goto="chat"><h3>Chat</h3><p>Message buyers and sellers directly to make a deal.</p></div>
       <div class="feature" data-goto="map"><h3>Trader map</h3><p>Find players and traders in your area and add them.</p></div>
     </div>
-    <p class="notice">Preview version: market prices are live. Listings, chat and the map are demo features saved only on your device until accounts are added.</p>
+  </section>
+
+  <!-- ACCOUNT -->
+  <section id="account" class="panel">
+    <div id="authBox" class="box narrow">
+      <h2 id="authTitle">Create your account</h2>
+      <form id="authForm" class="stack">
+        <input name="username" id="authUsername" placeholder="Username" maxlength="24">
+        <input name="email" type="email" required placeholder="Email">
+        <input name="password" type="password" required minlength="6" placeholder="Password (6+ characters)">
+        <input name="city" id="authCity" placeholder="City (optional)">
+        <button class="btn primary" type="submit" id="authSubmit">Sign up</button>
+      </form>
+      <p class="small"><a href="#" id="authToggle">Already have an account? Sign in</a></p>
+      <p id="authMsg" class="status"></p>
+    </div>
+
+    <div id="profileBox" class="box narrow hidden">
+      <h2>Your profile</h2>
+      <form id="profileForm" class="stack">
+        <label>Username<input name="username" required maxlength="24"></label>
+        <label>City<input name="city"></label>
+        <label>Main deck / commander<input name="deck" placeholder="e.g. Myrel, Shield of Argive"></label>
+        <label class="check"><input type="checkbox" name="show_on_map"> Show me on the trader map (approximate area only)</label>
+        <button class="btn" type="button" id="setLocBtn">Use my current location</button>
+        <p id="locMsg" class="small"></p>
+        <button class="btn primary" type="submit">Save profile</button>
+      </form>
+      <p id="profileMsg" class="status"></p>
+      <h3>Your listings</h3>
+      <div id="myListings" class="grid"></div>
+      <button class="btn" id="signOutBtn">Sign out</button>
+    </div>
   </section>
 
   <!-- MARKET -->
@@ -65,16 +98,15 @@
       <button class="btn primary" id="newListingBtn">+ List a card</button>
     </div>
     <form id="listingForm" class="card-form hidden">
-      <input name="card" required placeholder="Card name">
+      <input name="card" required maxlength="120" placeholder="Card name">
       <select name="type"><option>For sale</option><option>For trade</option><option>Looking for</option></select>
-      <input name="price" placeholder="Asking price or what you want in trade">
-      <select name="condition"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option></select>
-      <input name="seller" required placeholder="Your name">
-      <input name="city" placeholder="Your city">
+      <input name="price" maxlength="120" placeholder="Asking price or what you want in trade">
+      <select name="condition"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Any</option></select>
+      <input name="city" maxlength="80" placeholder="Your city">
       <button class="btn primary" type="submit">Post listing</button>
     </form>
     <div class="row">
-      <input id="listingFilter" placeholder="Filter listings">
+      <input id="listingFilter" placeholder="Filter by card, seller or city">
       <select id="typeFilter"><option value="">All</option><option>For sale</option><option>For trade</option><option>Looking for</option></select>
     </div>
     <div id="listings" class="grid"></div>
@@ -84,13 +116,14 @@
   <!-- CHAT -->
   <section id="chat" class="panel">
     <h2>Messages</h2>
-    <div class="chat-wrap">
+    <p id="chatGate" class="status hidden">Sign in to message other players.</p>
+    <div class="chat-wrap" id="chatWrap">
       <aside id="convoList" class="convos"></aside>
       <div class="chat-main">
         <div id="chatHeader" class="chat-header">Pick a conversation</div>
         <div id="chatMessages" class="messages"></div>
         <form id="chatForm" class="row">
-          <input id="chatInput" placeholder="Type a message" autocomplete="off">
+          <input id="chatInput" placeholder="Type a message" autocomplete="off" maxlength="2000">
           <button class="btn primary" type="submit">Send</button>
         </form>
       </div>
@@ -103,7 +136,11 @@
       <h2>Traders near you</h2>
       <button class="btn primary" id="locateBtn">Find players near me</button>
     </div>
+    <p class="small">Only players who turn on "Show me on the trader map" in their profile appear here, and only their approximate area.</p>
     <div id="mapView"></div>
+    <h3 id="friendsTitle" class="hidden">Your traders</h3>
+    <div id="friendsList" class="grid"></div>
+    <h3>Players</h3>
     <div id="nearbyList" class="grid"></div>
   </section>
 </main>
@@ -111,6 +148,7 @@
 <footer>Mana Tracker is unofficial and not affiliated with Wizards of the Coast. Card data and images from Scryfall.</footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 </body>
 </html>

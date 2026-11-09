@@ -1,14 +1,18 @@
-// Mana Tracker - preview version
-// Market data is live from Scryfall. Listings, chat and map are demo features stored in localStorage
-// until a backend (e.g. Supabase) is connected.
+// Mana Tracker
+// Market: live Scryfall data. Accounts, listings, chat and map: Supabase.
+
+const SUPABASE_URL = 'https://txmeggmwqyfcnnsiexck.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_38gPNXOs2k7zLumLuQYfpQ_UBq_E3D8';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-const store = {
-  get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
-  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
-};
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ago = (t) => { const s = (Date.now() - new Date(t)) / 1000; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago'; };
+
+let user = null;      // auth user
+let profile = null;   // my profile row
+let profilesById = {};
 
 // ---------- Tabs ----------
 let mapReady = false;
@@ -17,10 +21,110 @@ function showTab(id) {
   $$('.panel').forEach((p) => p.classList.toggle('active', p.id === id));
   if (id === 'map') initMap();
   if (id === 'market' && !$('#marketGrid').children.length) runSearch('usd>1000');
+  if (id === 'trade') loadListings();
+  if (id === 'chat') { $('#unreadDot').classList.add('hidden'); loadConvos(); }
+  if (id === 'account' && user) loadMyListings();
   window.scrollTo(0, 0);
 }
 $$('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 $$('[data-goto]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.goto)));
+
+function requireLogin(msg) {
+  if (user) return true;
+  showTab('account');
+  $('#authMsg').textContent = msg || 'Sign in or create an account first.';
+  return false;
+}
+
+// ---------- Auth ----------
+let signUpMode = true;
+function setAuthMode(up) {
+  signUpMode = up;
+  $('#authTitle').textContent = up ? 'Create your account' : 'Sign in';
+  $('#authSubmit').textContent = up ? 'Sign up' : 'Sign in';
+  $('#authUsername').classList.toggle('hidden', !up);
+  $('#authCity').classList.toggle('hidden', !up);
+  $('#authToggle').textContent = up ? 'Already have an account? Sign in' : 'New here? Create an account';
+  $('#authMsg').textContent = '';
+}
+$('#authToggle').addEventListener('click', (e) => { e.preventDefault(); setAuthMode(!signUpMode); });
+$('#authForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  $('#authMsg').textContent = 'Working...';
+  if (signUpMode) {
+    const username = (d.username || '').trim();
+    if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) { $('#authMsg').textContent = 'Username must be 3-24 letters, numbers or underscores.'; return; }
+    const { data: taken } = await sb.from('profiles').select('id').ilike('username', username).maybeSingle();
+    if (taken) { $('#authMsg').textContent = 'That username is taken.'; return; }
+    const { error } = await sb.auth.signUp({ email: d.email, password: d.password, options: { data: { username, city: d.city || null } } });
+    $('#authMsg').textContent = error ? error.message : 'Account created! You are signed in.';
+  } else {
+    const { error } = await sb.auth.signInWithPassword({ email: d.email, password: d.password });
+    $('#authMsg').textContent = error ? error.message : '';
+  }
+});
+$('#signOutBtn').addEventListener('click', async () => { await sb.auth.signOut(); showTab('home'); });
+
+sb.auth.onAuthStateChange(async (_evt, session) => {
+  user = session?.user || null;
+  if (user) {
+    const { data } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+    profile = data;
+    $('#accountTab').textContent = profile ? '@' + profile.username : 'Account';
+    $('#heroJoin').classList.add('hidden');
+    $('#authBox').classList.add('hidden');
+    $('#profileBox').classList.remove('hidden');
+    fillProfileForm();
+    subscribeMessages();
+  } else {
+    profile = null;
+    $('#accountTab').textContent = 'Sign in';
+    $('#heroJoin').classList.remove('hidden');
+    $('#authBox').classList.remove('hidden');
+    $('#profileBox').classList.add('hidden');
+    unsubscribeMessages();
+  }
+  $('#chatGate').classList.toggle('hidden', !!user);
+  $('#chatWrap').classList.toggle('hidden', !user);
+});
+
+// ---------- Profile ----------
+let pendingLoc = null;
+function fillProfileForm() {
+  if (!profile) return;
+  const f = $('#profileForm');
+  f.username.value = profile.username || '';
+  f.city.value = profile.city || '';
+  f.deck.value = profile.deck || '';
+  f.show_on_map.checked = !!profile.show_on_map;
+  $('#locMsg').textContent = profile.lat ? 'Location saved (approximate).' : 'No location saved yet.';
+}
+// Round to roughly 3 miles so exact homes are never shown
+const fuzz = (n) => Math.round(n * 20) / 20;
+$('#setLocBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) { $('#locMsg').textContent = 'Location is not available on this device.'; return; }
+  $('#locMsg').textContent = 'Getting location...';
+  navigator.geolocation.getCurrentPosition((p) => {
+    pendingLoc = { lat: fuzz(p.coords.latitude), lng: fuzz(p.coords.longitude) };
+    $('#locMsg').textContent = 'Got it. Tap Save profile to keep it.';
+  }, () => { $('#locMsg').textContent = 'Could not get your location.'; });
+});
+$('#profileForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const username = f.username.value.trim();
+  if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) { $('#profileMsg').textContent = 'Username must be 3-24 letters, numbers or underscores.'; return; }
+  const upd = { username, city: f.city.value.trim() || null, deck: f.deck.value.trim() || null, show_on_map: f.show_on_map.checked };
+  if (pendingLoc) Object.assign(upd, pendingLoc);
+  const { data, error } = await sb.from('profiles').update(upd).eq('id', user.id).select().single();
+  if (error) { $('#profileMsg').textContent = error.message.includes('duplicate') ? 'That username is taken.' : error.message; return; }
+  profile = data; pendingLoc = null;
+  $('#accountTab').textContent = '@' + profile.username;
+  $('#profileMsg').textContent = 'Saved!';
+  fillProfileForm();
+  if (mapReady) loadMapPlayers();
+});
 
 // ---------- Market (live Scryfall) ----------
 async function runSearch(q) {
@@ -30,15 +134,12 @@ async function runSearch(q) {
   grid.innerHTML = '';
   try {
     const url = `https://api.scryfall.com/cards/search?order=usd&dir=desc&unique=cards&q=${encodeURIComponent(q + ' game:paper')}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const data = await (await fetch(url)).json();
     if (!data.data) { status.textContent = 'No cards found. Try another search.'; return; }
     const cards = data.data.slice(0, 40);
     status.textContent = `Showing ${cards.length} of ${data.total_cards} cards, highest price first`;
     grid.innerHTML = cards.map(cardTile).join('');
-  } catch (e) {
-    status.textContent = 'Could not load prices right now. Try again in a moment.';
-  }
+  } catch { status.textContent = 'Could not load prices right now. Try again in a moment.'; }
 }
 function cardTile(c) {
   const img = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal || '';
@@ -48,144 +149,223 @@ function cardTile(c) {
     <div class="name">${esc(c.name)}</div>
     <div class="meta">${esc(c.set_name)} · ${esc(c.rarity)}</div>
     <div class="price">${usd}</div>
-    <button class="btn" onclick="quickList('${esc(c.name).replace(/'/g, "\\'")}','${c.prices?.usd || ''}')">List this card</button>
+    <button class="btn" data-quick="${esc(c.name)}" data-usd="${c.prices?.usd || ''}">List this card</button>
   </div>`;
 }
-$('#searchForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const v = $('#searchInput').value.trim();
-  if (v) runSearch(v);
-});
-$$('.chip').forEach((c) => c.addEventListener('click', () => runSearch(c.dataset.q)));
-
-// ---------- Listings (demo) ----------
-const demoListings = [
-  { card: 'Myrel, Shield of Argive', type: 'For sale', price: '$18', condition: 'Near Mint', seller: 'SoldierSam', city: 'Hartford, CT' },
-  { card: 'Skullclamp', type: 'For trade', price: 'Want: Cathars\' Crusade', condition: 'Lightly Played', seller: 'ClampQueen', city: 'New Haven, CT' },
-  { card: 'Anointed Procession', type: 'For sale', price: '$55', condition: 'Near Mint', seller: 'TokenTim', city: 'Springfield, MA' },
-  { card: 'The One Ring', type: 'Looking for', price: 'Up to $95', condition: 'Any', seller: 'RingSeeker', city: 'Providence, RI' },
-  { card: 'Sol Ring', type: 'For sale', price: '$1', condition: 'Moderately Played', seller: 'BudgetBrew', city: 'Waterbury, CT' },
-];
-let listings = store.get('mt_listings', demoListings);
-function renderListings() {
-  const f = $('#listingFilter').value.toLowerCase();
-  const t = $('#typeFilter').value;
-  const shown = listings.filter((l) => (!t || l.type === t) && (l.card + l.seller + l.city).toLowerCase().includes(f));
-  $('#listings').innerHTML = shown.map((l) => `<div class="card">
-    <span class="badge">${esc(l.type)}</span>
-    <div class="name">${esc(l.card)}</div>
-    <div class="price">${esc(l.price)}</div>
-    <div class="meta">${esc(l.condition)} · ${esc(l.seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
-    <button class="btn" onclick="messageSeller('${esc(l.seller).replace(/'/g, "\\'")}','${esc(l.card).replace(/'/g, "\\'")}')">Message seller</button>
-  </div>`).join('') || '<p class="status">No listings match.</p>';
-}
-$('#newListingBtn').addEventListener('click', () => $('#listingForm').classList.toggle('hidden'));
-$('#listingForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const d = Object.fromEntries(new FormData(e.target));
-  listings.unshift(d);
-  store.set('mt_listings', listings);
-  e.target.reset();
-  e.target.classList.add('hidden');
-  renderListings();
-});
-$('#listingFilter').addEventListener('input', renderListings);
-$('#typeFilter').addEventListener('change', renderListings);
-window.quickList = (name, usd) => {
+$('#marketGrid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-quick]');
+  if (!b) return;
+  if (!requireLogin('Sign in to list a card.')) return;
   showTab('trade');
   const f = $('#listingForm');
   f.classList.remove('hidden');
-  f.card.value = name;
-  f.price.value = usd ? `$${usd}` : '';
-};
-
-// ---------- Chat (demo) ----------
-let convos = store.get('mt_convos', {
-  SoldierSam: [{ from: 'them', text: 'Hey! Myrel is still available if you want it.' }],
-  ClampQueen: [{ from: 'them', text: 'Would you trade a Cathars\' Crusade for my Skullclamp?' }],
+  f.card.value = b.dataset.quick;
+  f.price.value = b.dataset.usd ? `$${b.dataset.usd}` : '';
+  f.city.value = profile?.city || '';
 });
-let activeConvo = null;
-function renderConvos() {
-  $('#convoList').innerHTML = Object.keys(convos).map((n) => {
-    const last = convos[n][convos[n].length - 1];
-    return `<div class="convo ${n === activeConvo ? 'active' : ''}" onclick="openConvo('${esc(n).replace(/'/g, "\\'")}')">
-      <div><b>${esc(n)}</b></div><div class="meta">${esc(last?.text || '')}</div></div>`;
-  }).join('') || '<div class="convo">No messages yet</div>';
+$('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); const v = $('#searchInput').value.trim(); if (v) runSearch(v); });
+$$('.chip').forEach((c) => c.addEventListener('click', () => runSearch(c.dataset.q)));
+
+// ---------- Listings ----------
+let listings = [];
+async function loadListings() {
+  $('#listings').innerHTML = '<p class="status">Loading listings...</p>';
+  const { data, error } = await sb.from('listings').select('*, profiles(username, city)').order('created_at', { ascending: false }).limit(200);
+  if (error) { $('#listings').innerHTML = '<p class="status">Could not load listings.</p>'; return; }
+  listings = data;
+  renderListings();
 }
-window.openConvo = (n) => {
-  activeConvo = n;
-  $('#chatHeader').textContent = n;
-  $('#chatMessages').innerHTML = convos[n].map((m) => `<div class="msg ${m.from === 'me' ? 'me' : ''}">${esc(m.text)}</div>`).join('');
-  $('#chatMessages').scrollTop = 1e9;
-  renderConvos();
-};
-$('#chatForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const v = $('#chatInput').value.trim();
-  if (!v || !activeConvo) return;
-  convos[activeConvo].push({ from: 'me', text: v });
-  store.set('mt_convos', convos);
-  $('#chatInput').value = '';
-  openConvo(activeConvo);
+function listingCard(l, mine) {
+  const seller = l.profiles?.username || 'player';
+  return `<div class="card">
+    <span class="badge">${esc(l.type)}</span>
+    <div class="name">${esc(l.card)}</div>
+    <div class="price">${esc(l.price || '')}</div>
+    <div class="meta">${esc(l.condition || '')} · @${esc(seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
+    <div class="meta">${ago(l.created_at)}</div>
+    ${mine ? `<button class="btn" data-del="${l.id}">Remove listing</button>`
+      : (user && l.user_id === user.id ? '<span class="meta">Your listing</span>'
+      : `<button class="btn" data-msg="${l.user_id}" data-card="${esc(l.card)}" data-listing="${l.id}">Message seller</button>`)}
+  </div>`;
+}
+function renderListings() {
+  const f = $('#listingFilter').value.toLowerCase();
+  const t = $('#typeFilter').value;
+  const shown = listings.filter((l) => (!t || l.type === t) && (l.card + ' ' + (l.profiles?.username || '') + ' ' + (l.city || '')).toLowerCase().includes(f));
+  $('#listings').innerHTML = shown.map((l) => listingCard(l, false)).join('') || '<p class="status">No listings yet. Be the first to post one!</p>';
+}
+$('#newListingBtn').addEventListener('click', () => {
+  if (!requireLogin('Sign in to list a card.')) return;
+  const f = $('#listingForm');
+  f.classList.toggle('hidden');
+  if (!f.city.value) f.city.value = profile?.city || '';
 });
-window.messageSeller = (seller, card) => {
-  if (!convos[seller]) convos[seller] = [];
-  if (!convos[seller].length) convos[seller].push({ from: 'me', text: `Hi! Is your ${card} still available?` });
-  store.set('mt_convos', convos);
-  showTab('chat');
-  openConvo(seller);
-};
+$('#listingForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  const { error } = await sb.from('listings').insert({ card: d.card.trim(), type: d.type, price: d.price.trim() || null, condition: d.condition, city: d.city.trim() || null });
+  if (error) { alert('Could not post: ' + error.message); return; }
+  e.target.reset();
+  e.target.classList.add('hidden');
+  loadListings();
+});
+$('#listingFilter').addEventListener('input', renderListings);
+$('#typeFilter').addEventListener('change', renderListings);
+async function loadMyListings() {
+  const { data } = await sb.from('listings').select('*, profiles(username, city)').eq('user_id', user.id).order('created_at', { ascending: false });
+  $('#myListings').innerHTML = (data || []).map((l) => listingCard(l, true)).join('') || '<p class="status">You have no listings yet.</p>';
+}
+document.addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-del]');
+  if (del && confirm('Remove this listing?')) {
+    await sb.from('listings').delete().eq('id', del.dataset.del);
+    loadMyListings();
+  }
+  const msg = e.target.closest('[data-msg]');
+  if (msg) {
+    if (!requireLogin('Sign in to message players.')) return;
+    startChat(msg.dataset.msg, msg.dataset.card ? `Hi! Is your ${msg.dataset.card} still available?` : '', msg.dataset.listing || null);
+  }
+  const add = e.target.closest('[data-add]');
+  if (add) {
+    if (!requireLogin('Sign in to add traders.')) return;
+    await sb.from('friends').insert({ friend_id: add.dataset.add });
+    loadMapPlayers();
+  }
+  const rm = e.target.closest('[data-unadd]');
+  if (rm) {
+    await sb.from('friends').delete().eq('user_id', user.id).eq('friend_id', rm.dataset.unadd);
+    loadMapPlayers();
+  }
+});
 
-// ---------- Map (demo traders) ----------
-const traders = [
-  { name: 'SoldierSam', lat: 41.7658, lng: -72.6734, deck: 'Myrel soldiers', city: 'Hartford, CT' },
-  { name: 'ClampQueen', lat: 41.3083, lng: -72.9279, deck: 'Edgar Markov', city: 'New Haven, CT' },
-  { name: 'TokenTim', lat: 42.1015, lng: -72.5898, deck: 'Rhys the Redeemed', city: 'Springfield, MA' },
-  { name: 'RingSeeker', lat: 41.824, lng: -71.4128, deck: 'Atraxa', city: 'Providence, RI' },
-  { name: 'BudgetBrew', lat: 41.5582, lng: -73.0515, deck: 'Krenko', city: 'Waterbury, CT' },
-];
-let map;
-let friends = store.get('mt_friends', []);
+// ---------- Chat ----------
+let messages = [];
+let activePartner = null;
+let pendingListing = null;
+let channel = null;
+async function getProfiles(ids) {
+  const need = ids.filter((id) => !profilesById[id]);
+  if (need.length) {
+    const { data } = await sb.from('profiles').select('id, username, city').in('id', need);
+    (data || []).forEach((p) => { profilesById[p.id] = p; });
+  }
+}
+async function loadConvos() {
+  if (!user) return;
+  const { data } = await sb.from('messages').select('*').or(`sender.eq.${user.id},recipient.eq.${user.id}`).order('created_at', { ascending: true }).limit(1000);
+  messages = data || [];
+  await getProfiles([...new Set(messages.map((m) => (m.sender === user.id ? m.recipient : m.sender)))]);
+  renderConvos();
+  if (activePartner) renderThread();
+}
+function renderConvos() {
+  const last = {};
+  messages.forEach((m) => { last[m.sender === user.id ? m.recipient : m.sender] = m; });
+  if (activePartner && !last[activePartner]) last[activePartner] = null;
+  const ids = Object.keys(last).sort((a, b) => new Date(last[b]?.created_at || Date.now()) - new Date(last[a]?.created_at || Date.now()));
+  $('#convoList').innerHTML = ids.map((id) => `<div class="convo ${id === activePartner ? 'active' : ''}" data-convo="${id}">
+      <div><b>@${esc(profilesById[id]?.username || 'player')}</b></div>
+      <div class="meta">${esc(last[id]?.body || 'New conversation')}</div></div>`).join('') || '<div class="convo">No messages yet. Message a seller from Buy &amp; Trade.</div>';
+}
+function renderThread() {
+  const p = profilesById[activePartner];
+  $('#chatHeader').textContent = '@' + (p?.username || 'player') + (p?.city ? ' · ' + p.city : '');
+  const thread = messages.filter((m) => m.sender === activePartner || m.recipient === activePartner);
+  $('#chatMessages').innerHTML = thread.map((m) => `<div class="msg ${m.sender === user.id ? 'me' : ''}">${esc(m.body)}<div class="time">${ago(m.created_at)}</div></div>`).join('') || '<p class="status">Say hi!</p>';
+  $('#chatMessages').scrollTop = 1e9;
+}
+$('#convoList').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-convo]');
+  if (!c) return;
+  activePartner = c.dataset.convo;
+  pendingListing = null;
+  renderConvos(); renderThread();
+});
+async function startChat(partnerId, draft, listingId) {
+  await getProfiles([partnerId]);
+  activePartner = partnerId;
+  pendingListing = listingId;
+  showTab('chat');
+  $('#chatInput').value = draft || '';
+  $('#chatInput').focus();
+}
+$('#chatForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = $('#chatInput').value.trim();
+  if (!body || !activePartner || !user) return;
+  $('#chatInput').value = '';
+  const { data, error } = await sb.from('messages').insert({ recipient: activePartner, body, listing_id: pendingListing }).select().single();
+  if (error) { alert('Could not send: ' + error.message); $('#chatInput').value = body; return; }
+  pendingListing = null;
+  if (!messages.find((m) => m.id === data.id)) messages.push(data);
+  renderConvos(); renderThread();
+});
+function subscribeMessages() {
+  unsubscribeMessages();
+  channel = sb.channel('my-messages')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `recipient=eq.${user.id}` }, async (payload) => {
+      const m = payload.new;
+      if (messages.find((x) => x.id === m.id)) return;
+      messages.push(m);
+      await getProfiles([m.sender]);
+      if ($('#chat').classList.contains('active')) { renderConvos(); if (activePartner === m.sender) renderThread(); }
+      else $('#unreadDot').classList.remove('hidden');
+    })
+    .subscribe();
+}
+function unsubscribeMessages() { if (channel) { sb.removeChannel(channel); channel = null; } }
+
+// ---------- Map ----------
+let map, playerLayer, meMarker;
+let myPos = null;
 function initMap() {
-  if (mapReady) { setTimeout(() => map.invalidateSize(), 100); return; }
+  if (mapReady) { setTimeout(() => map.invalidateSize(), 100); loadMapPlayers(); return; }
   mapReady = true;
-  map = L.map('mapView').setView([41.7, -72.7], 8);
+  map = L.map('mapView').setView([39.8, -98.6], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-  traders.forEach((t) => L.marker([t.lat, t.lng]).addTo(map).bindPopup(`<b>${t.name}</b><br>${t.city}<br>Plays: ${t.deck}`));
-  renderNearby();
+  playerLayer = L.layerGroup().addTo(map);
+  loadMapPlayers();
 }
 function dist(a, b, c, d) {
   const R = 3958.8, r = Math.PI / 180;
   const x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
 }
-function renderNearby(me) {
-  const list = traders.map((t) => ({ ...t, miles: me ? dist(me.lat, me.lng, t.lat, t.lng) : null }))
+async function loadMapPlayers() {
+  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng').eq('show_on_map', true).not('lat', 'is', null).limit(1000);
+  let friendIds = [];
+  if (user) {
+    const { data: fr } = await sb.from('friends').select('friend_id').eq('user_id', user.id);
+    friendIds = (fr || []).map((f) => f.friend_id);
+  }
+  const list = (players || []).filter((p) => !user || p.id !== user.id)
+    .map((p) => ({ ...p, miles: myPos ? dist(myPos.lat, myPos.lng, p.lat, p.lng) : null }))
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
-  $('#nearbyList').innerHTML = list.map((t) => `<div class="card">
-    <div class="name">${esc(t.name)}</div>
-    <div class="meta">${esc(t.city)}${t.miles != null ? ' · ' + t.miles.toFixed(0) + ' mi away' : ''}</div>
-    <div class="meta">Plays: ${esc(t.deck)}</div>
-    <button class="btn" onclick="addFriend('${t.name}')">${friends.includes(t.name) ? 'Added' : 'Add trader'}</button>
-    <button class="btn" onclick="messageSeller('${t.name}','cards')">Message</button>
-  </div>`).join('');
+  playerLayer.clearLayers();
+  list.forEach((p) => L.marker([p.lat, p.lng]).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b><br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
+  const tile = (p) => `<div class="card">
+    <div class="name">@${esc(p.username)}</div>
+    <div class="meta">${esc(p.city || 'Unknown area')}${p.miles != null ? ' · about ' + p.miles.toFixed(0) + ' mi away' : ''}</div>
+    ${p.deck ? `<div class="meta">Plays: ${esc(p.deck)}</div>` : ''}
+    ${friendIds.includes(p.id) ? `<button class="btn" data-unadd="${p.id}">Remove trader</button>` : `<button class="btn" data-add="${p.id}">Add trader</button>`}
+    <button class="btn" data-msg="${p.id}">Message</button>
+  </div>`;
+  const friends = list.filter((p) => friendIds.includes(p.id));
+  $('#friendsTitle').classList.toggle('hidden', !friends.length);
+  $('#friendsList').innerHTML = friends.map(tile).join('');
+  $('#nearbyList').innerHTML = list.map(tile).join('') || '<p class="status">No players on the map yet. Turn on "Show me on the trader map" in your profile to be the first!</p>';
 }
-window.addFriend = (n) => {
-  if (!friends.includes(n)) friends.push(n);
-  store.set('mt_friends', friends);
-  renderNearby(window._me);
-};
 $('#locateBtn').addEventListener('click', () => {
   if (!navigator.geolocation) return alert('Location is not available on this device.');
   navigator.geolocation.getCurrentPosition((p) => {
-    const me = { lat: p.coords.latitude, lng: p.coords.longitude };
-    window._me = me;
-    L.circleMarker([me.lat, me.lng], { radius: 9, color: '#c9a227' }).addTo(map).bindPopup('You are here').openPopup();
-    map.setView([me.lat, me.lng], 9);
-    renderNearby(me);
+    myPos = { lat: p.coords.latitude, lng: p.coords.longitude };
+    if (meMarker) meMarker.remove();
+    meMarker = L.circleMarker([myPos.lat, myPos.lng], { radius: 9, color: '#c9a227' }).addTo(map).bindPopup('You are here').openPopup();
+    map.setView([myPos.lat, myPos.lng], 9);
+    loadMapPlayers();
   }, () => alert('Could not get your location.'));
 });
 
 // ---------- Start ----------
-renderListings();
-renderConvos();
+setAuthMode(true);

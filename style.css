@@ -48,5 +48,15 @@ input,select{background:#0b0e1a;color:var(--text);border:1px solid var(--line);b
 .msg{max-width:75%;padding:8px 12px;border-radius:14px;background:#22284a}
 .msg.me{align-self:flex-end;background:var(--accent);color:#111}
 #mapView{height:420px;border-radius:12px;border:1px solid var(--line);margin-bottom:14px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.narrow{max-width:520px;margin:0 auto}
+.stack{display:flex;flex-direction:column;gap:10px}
+label{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:.85rem}
+label.check{flex-direction:row;align-items:center;gap:8px;color:var(--text)}
+label.check input{flex:none;min-width:0;width:18px;height:18px}
+a{color:var(--accent)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e74c3c;margin-left:4px;vertical-align:middle}
+.msg .time{font-size:.7rem;opacity:.6;margin-top:2px}
+h3{margin-top:24px}
 footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 @media(max-width:700px){.chat-wrap{grid-template-columns:1fr}.convos{max-height:160px}.hero h1{font-size:1.6rem}}
