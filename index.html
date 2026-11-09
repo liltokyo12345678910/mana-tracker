@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mana Tracker - Buy, trade and track Magic cards</title>
+<meta name="description" content="Mana Tracker: buy and trade Magic: The Gathering cards, track live card prices, chat with traders and find players near you.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">&#9670;</span> Mana Tracker</div>
+  <nav>
+    <button class="tab active" data-tab="home">Home</button>
+    <button class="tab" data-tab="market">Market</button>
+    <button class="tab" data-tab="trade">Buy &amp; Trade</button>
+    <button class="tab" data-tab="chat">Chat</button>
+    <button class="tab" data-tab="map">Map</button>
+  </nav>
+</header>
+
+<main>
+  <!-- HOME -->
+  <section id="home" class="panel active">
+    <div class="hero">
+      <h1>Your Magic cards, all in one place</h1>
+      <p>Track live card prices, list cards to buy or trade, message other players and find traders near you.</p>
+      <div class="hero-actions">
+        <button class="btn primary" data-goto="market">Check prices</button>
+        <button class="btn" data-goto="trade">Browse listings</button>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feature" data-goto="market"><h3>Live market</h3><p>Real-time prices for every card, plus the most expensive cards right now.</p></div>
+      <div class="feature" data-goto="trade"><h3>Buy &amp; trade</h3><p>Post cards you want to sell or trade. Buyers and sellers work out payment between themselves.</p></div>
+      <div class="feature" data-goto="chat"><h3>Chat</h3><p>Message buyers and sellers directly to make a deal.</p></div>
+      <div class="feature" data-goto="map"><h3>Trader map</h3><p>Find players and traders in your area and add them.</p></div>
+    </div>
+    <p class="notice">Preview version: market prices are live. Listings, chat and the map are demo features saved only on your device until accounts are added.</p>
+  </section>
+
+  <!-- MARKET -->
+  <section id="market" class="panel">
+    <h2>Card market</h2>
+    <form id="searchForm" class="row">
+      <input id="searchInput" type="text" placeholder="Search any card, e.g. Myrel, Shield of Argive" autocomplete="off">
+      <button class="btn primary" type="submit">Search</button>
+    </form>
+    <div class="row chips">
+      <button class="chip" data-q="usd>1000">Most expensive</button>
+      <button class="chip" data-q="is:commander usd>20">Pricey commanders</button>
+      <button class="chip" data-q="t:soldier id=w usd<1">Budget soldiers</button>
+      <button class="chip" data-q="year>=2026 usd>10">Hot new cards</button>
+    </div>
+    <div id="marketStatus" class="status"></div>
+    <div id="marketGrid" class="grid"></div>
+    <p class="small">Prices are TCGplayer market prices via Scryfall. Updated daily.</p>
+  </section>
+
+  <!-- TRADE -->
+  <section id="trade" class="panel">
+    <div class="row between">
+      <h2>Buy &amp; trade</h2>
+      <button class="btn primary" id="newListingBtn">+ List a card</button>
+    </div>
+    <form id="listingForm" class="card-form hidden">
+      <input name="card" required placeholder="Card name">
+      <select name="type"><option>For sale</option><option>For trade</option><option>Looking for</option></select>
+      <input name="price" placeholder="Asking price or what you want in trade">
+      <select name="condition"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option></select>
+      <input name="seller" required placeholder="Your name">
+      <input name="city" placeholder="Your city">
+      <button class="btn primary" type="submit">Post listing</button>
+    </form>
+    <div class="row">
+      <input id="listingFilter" placeholder="Filter listings">
+      <select id="typeFilter"><option value="">All</option><option>For sale</option><option>For trade</option><option>Looking for</option></select>
+    </div>
+    <div id="listings" class="grid"></div>
+    <p class="small">Mana Tracker doesn't handle payments. Buyers and sellers arrange payment and shipping themselves. Meet in public places and use protected payment methods.</p>
+  </section>
+
+  <!-- CHAT -->
+  <section id="chat" class="panel">
+    <h2>Messages</h2>
+    <div class="chat-wrap">
+      <aside id="convoList" class="convos"></aside>
+      <div class="chat-main">
+        <div id="chatHeader" class="chat-header">Pick a conversation</div>
+        <div id="chatMessages" class="messages"></div>
+        <form id="chatForm" class="row">
+          <input id="chatInput" placeholder="Type a message" autocomplete="off">
+          <button class="btn primary" type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section id="map" class="panel">
+    <div class="row between">
+      <h2>Traders near you</h2>
+      <button class="btn primary" id="locateBtn">Find players near me</button>
+    </div>
+    <div id="mapView"></div>
+    <div id="nearbyList" class="grid"></div>
+  </section>
+</main>
+
+<footer>Mana Tracker is unofficial and not affiliated with Wizards of the Coast. Card data and images from Scryfall.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+:root{--bg:#0f1220;--panel:#181c30;--line:#2a3050;--text:#e8eaf6;--muted:#9aa0c3;--accent:#c9a227;--accent2:#6c5ce7}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+.topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:12px 20px;background:#0b0e1a;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1000}
+.brand{font-size:1.4rem;font-weight:800;letter-spacing:.5px}
+.logo{color:var(--accent)}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+.tab{background:none;border:none;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:.95rem}
+.tab.active,.tab:hover{color:var(--text);background:var(--panel)}
+main{max-width:1100px;margin:0 auto;padding:20px}
+.panel{display:none}.panel.active{display:block}
+.hero{text-align:center;padding:50px 10px 30px;background:radial-gradient(circle at top,#2b2560,transparent 70%);border-radius:16px}
+.hero h1{font-size:2.2rem;margin:0 0 10px}
+.hero p{color:var(--muted);max-width:600px;margin:0 auto 20px}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:24px}
+.feature{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer}
+.feature:hover{border-color:var(--accent)}
+.feature h3{margin:0 0 6px;color:var(--accent)}
+.feature p{margin:0;color:var(--muted)}
+.btn{background:var(--panel);color:var(--text);border:1px solid var(--line);padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);color:#111;border-color:var(--accent)}
+.btn:hover{filter:brightness(1.1)}
+.hero-actions{display:flex;gap:10px;justify-content:center}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;align-items:center}
+.between{justify-content:space-between}
+input,select{background:#0b0e1a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.95rem;flex:1;min-width:160px}
+.chips .chip{background:#22284a;color:var(--text);border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.card img{width:100%;border-radius:10px}
+.card .name{font-weight:700}
+.card .meta{color:var(--muted);font-size:.85rem}
+.price{color:var(--accent);font-weight:800;font-size:1.1rem}
+.badge{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--accent2);color:#fff;width:fit-content}
+.status,.small,.notice{color:var(--muted);font-size:.85rem}
+.notice{text-align:center;margin-top:24px}
+.card-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;background:var(--panel);padding:14px;border-radius:12px;border:1px solid var(--line)}
+.hidden{display:none!important}
+.chat-wrap{display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:420px}
+.convos{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:auto}
+.convo{padding:12px;border-bottom:1px solid var(--line);cursor:pointer}
+.convo.active,.convo:hover{background:#22284a}
+.convo .meta{color:var(--muted);font-size:.8rem}
+.chat-main{background:var(--panel);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;padding:10px}
+.chat-header{font-weight:700;padding:4px 6px 10px;border-bottom:1px solid var(--line)}
+.messages{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:300px}
+.msg{max-width:75%;padding:8px 12px;border-radius:14px;background:#22284a}
+.msg.me{align-self:flex-end;background:var(--accent);color:#111}
+#mapView{height:420px;border-radius:12px;border:1px solid var(--line);margin-bottom:14px}
+footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
+@media(max-width:700px){.chat-wrap{grid-template-columns:1fr}.convos{max-height:160px}.hero h1{font-size:1.6rem}}
