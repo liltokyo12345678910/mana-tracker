@@ -1205,7 +1205,7 @@ function embedSrc(s) {
   if (s.platform === 'twitch') return `https://player.twitch.tv/?channel=${s.channel}&parent=${SITE_HOST}&autoplay=false`;
   return `https://player.kick.com/${s.channel}?autoplay=false`;
 }
-const PLATFORM_NAME = { youtube: 'YouTube', tiktok: 'TikTok', twitch_video: 'Twitch', twitch_clip: 'Twitch clip', twitch: 'Twitch', kick: 'Kick' };
+const PLATFORM_NAME = { upload: 'Uploaded', youtube: 'YouTube', tiktok: 'TikTok', twitch_video: 'Twitch', twitch_clip: 'Twitch clip', twitch: 'Twitch', kick: 'Kick' };
 async function amStreamer() {
   if (!user) return false;
   if (isOwnerAcct()) return true;
@@ -1217,7 +1217,7 @@ async function loadLive() {
   const list = vids || [];
   await getProfiles(list.map((s) => s.user_id));
   $('#streamList').innerHTML = list.map((s) => `<div class="card stream-card">
-    <div class="stream-frame${s.platform === 'tiktok' ? ' tall' : ''}"><iframe src="${esc(embedSrc(s))}" allowfullscreen allow="encrypted-media; picture-in-picture" loading="lazy" title="${esc(s.title || 'Video')}"></iframe></div>
+    ${s.platform === 'upload' ? `<video class="up-video" src="${esc(s.video_url)}" controls playsinline preload="metadata"></video>` : `<div class="stream-frame${s.platform === 'tiktok' ? ' tall' : ''}"><iframe src="${esc(embedSrc(s))}" allowfullscreen allow="encrypted-media; picture-in-picture" loading="lazy" title="${esc(s.title || 'Video')}"></iframe></div>`}
     <div class="row between"><b>${esc(s.title || 'Pack opening')}</b><span class="meta">${PLATFORM_NAME[s.platform] || ''} · ${ago(s.created_at)}</span></div>
     <div class="meta who link" data-profile="${s.user_id}">${avatarHtml(profilesById[s.user_id])} @${esc(profilesById[s.user_id]?.username || 'player')}</div>
     ${user && (s.user_id === user.id || isOwnerAcct()) ? `<button class="btn danger" data-endstream="${s.id}">Delete video</button>` : ''}
@@ -1232,15 +1232,36 @@ async function loadStreamers() {
   await getProfiles((data || []).map((s) => s.user_id));
   $('#streamerList').innerHTML = (data || []).map((s) => `<div class="row between"><span>@${esc(profilesById[s.user_id]?.username || 'player')}</span><button class="btn" data-rmstreamer="${s.user_id}">Remove</button></div>`).join('') || '<p class="small">Nobody approved yet. You can always post videos yourself.</p>';
 }
+$('#videoFile').addEventListener('change', () => {
+  const f = $('#videoFile').files[0];
+  $('#videoFileName').textContent = f ? `${f.name} (${(f.size / 1048576).toFixed(1)} MB)` : 'No video picked (max 50 MB, short clips work best)';
+});
 $('#goLiveForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const d = Object.fromEntries(new FormData(e.target));
-  const s = parseVideo(d.link || '');
-  if (!s) { $('#goLiveMsg').textContent = "That link didn't work. Use a YouTube video, TikTok video, or Twitch video/clip link."; return; }
+  const file = $('#videoFile').files[0];
+  const title = (d.title || '').trim() || null;
+  let row;
+  if (file) {
+    if (file.size > 50 * 1048576) { $('#goLiveMsg').textContent = `That video is ${(file.size / 1048576).toFixed(0)} MB. The limit is 50 MB, so trim it or post it to YouTube/TikTok and paste the link.`; return; }
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    $('#postVideoBtn').disabled = true;
+    $('#goLiveMsg').textContent = 'Uploading your video... keep this page open';
+    const { error: upErr } = await sb.storage.from('videos').upload(path, file, { contentType: file.type || 'video/mp4', upsert: false });
+    $('#postVideoBtn').disabled = false;
+    if (upErr) { $('#goLiveMsg').textContent = 'Upload failed: ' + upErr.message; return; }
+    const { data: pub } = sb.storage.from('videos').getPublicUrl(path);
+    row = { title, platform: 'upload', channel: 'upload', video_url: pub.publicUrl };
+  } else {
+    const s = parseVideo(d.link || '');
+    if (!s) { $('#goLiveMsg').textContent = "Pick a video to upload, or paste a YouTube, TikTok, or Twitch video link."; return; }
+    row = { title, platform: s.platform, channel: s.channel };
+  }
   $('#goLiveMsg').textContent = 'Posting...';
-  const { error } = await sb.from('streams').insert({ title: (d.title || '').trim() || null, platform: s.platform, channel: s.channel });
+  const { error } = await sb.from('streams').insert(row);
   if (error) { $('#goLiveMsg').textContent = 'Could not post: ' + error.message; return; }
-  e.target.reset();
+  e.target.reset(); $('#videoFile').value = ''; $('#videoFileName').textContent = 'No video picked (max 50 MB, short clips work best)';
   await loadLive();
   $('#goLiveMsg').textContent = 'Video posted!';
   setTimeout(() => { $('#goLiveMsg').textContent = ''; }, 5000);
@@ -1261,7 +1282,8 @@ document.addEventListener('click', async (e) => {
   if (en) {
     if (en.dataset.armed !== '1') { en.dataset.armed = '1'; en.textContent = 'Tap again to delete'; return; }
     en.disabled = true;
-    const { data: gone } = await sb.from('streams').delete().eq('id', en.dataset.endstream).select('id');
+    const { data: gone } = await sb.from('streams').delete().eq('id', en.dataset.endstream).select('id, video_url');
+    const vu = gone?.[0]?.video_url; if (vu) { const p = vu.split('/object/public/videos/')[1]; if (p) sb.storage.from('videos').remove([decodeURIComponent(p)]); }
     if (!gone?.length) { alert('Could not delete the video. Try again.'); en.disabled = false; return; }
     $('#goLiveMsg').textContent = '';
     loadLive();

@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1220">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20261109g">
+<link rel="stylesheet" href="style.css?v=20261109h">
 </head>
 <body>
 <header class="topbar">
@@ -83,10 +83,13 @@
       <h3>Post a video</h3>
       <form id="goLiveForm" class="stack">
         <input name="title" maxlength="120" placeholder="Title, e.g. Opening a Foundations booster box!">
-        <input name="link" required maxlength="300" placeholder="Paste a YouTube, TikTok or Twitch video link">
-        <button class="btn primary" type="submit">Post video</button>
+        <label class="btn photo-btn" for="videoFile">&#127909; Upload a video from your phone</label>
+        <input type="file" id="videoFile" accept="video/*" class="hidden">
+        <span id="videoFileName" class="small">No video picked (max 50 MB, short clips work best)</span>
+        <div class="small or-line">or</div>
+        <input name="link" maxlength="300" placeholder="Paste a YouTube, TikTok or Twitch video link">
+        <button class="btn primary" type="submit" id="postVideoBtn">Post video</button>
       </form>
-      <p class="small">Upload your video to YouTube, TikTok or Twitch first, then paste the link here.</p>
       <p id="goLiveMsg" class="small"></p>
     </div>
     <div id="streamerAdmin" class="box stack hidden">
@@ -280,6 +283,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20261109g"></script>
+<script src="app.js?v=20261109h"></script>
 </body>
 </html>
