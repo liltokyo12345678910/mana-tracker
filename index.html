@@ -57,6 +57,12 @@
 
     <div id="profileBox" class="box narrow hidden">
       <h2>Your profile</h2>
+      <div class="avatar-edit">
+        <div id="avatarPreview" class="avatar xl"></div>
+        <label class="btn" for="avatarInput">Change profile picture</label>
+        <input type="file" id="avatarInput" accept="image/*" class="hidden">
+        <p id="avatarMsg" class="small"></p>
+      </div>
       <form id="profileForm" class="stack">
         <label>Username<input name="username" required maxlength="24"></label>
         <label>City<input name="city"></label>

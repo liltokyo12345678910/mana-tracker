@@ -14,6 +14,15 @@ let user = null;      // auth user
 let profile = null;   // my profile row
 let profilesById = {};
 
+// Profile picture bubble (falls back to the first letter of the username)
+function avatarHtml(p, size = '') {
+  const name = p?.username || '?';
+  const url = p?.avatar_url;
+  return url
+    ? `<span class="avatar ${size}" style="background-image:url('${esc(url)}')"></span>`
+    : `<span class="avatar ${size}">${esc(name[0].toUpperCase())}</span>`;
+}
+
 // ---------- Tabs ----------
 let mapReady = false;
 function showTab(id) {
@@ -98,8 +107,49 @@ function fillProfileForm() {
   f.city.value = profile.city || '';
   f.deck.value = profile.deck || '';
   f.show_on_map.checked = !!profile.show_on_map;
+  $('#avatarPreview').outerHTML = avatarHtml(profile, 'xl').replace('<span class="avatar xl"', '<span id="avatarPreview" class="avatar xl"');
   $('#locMsg').textContent = profile.lat ? 'Location saved (approximate).' : 'No location saved yet.';
 }
+
+// ---------- Profile picture upload ----------
+// Shrinks the photo to a 256px square before uploading so it loads fast
+function resizeImage(file, size = 256) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const s = Math.min(img.width, img.height);
+      c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not process image'))), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => reject(new Error('That file is not a supported image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+$('#avatarInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !user) return;
+  $('#avatarMsg').textContent = 'Uploading...';
+  try {
+    const blob = await resizeImage(file);
+    const path = `${user.id}/avatar.jpg`;
+    const { error: upErr } = await sb.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+    if (upErr) throw upErr;
+    const { data: pub } = sb.storage.from('avatars').getPublicUrl(path);
+    const avatar_url = pub.publicUrl + '?v=' + Date.now();
+    const { data, error } = await sb.from('profiles').update({ avatar_url }).eq('id', user.id).select().single();
+    if (error) throw error;
+    profile = data;
+    profilesById[user.id] = data;
+    fillProfileForm();
+    $('#avatarMsg').textContent = 'Looking good!';
+    if (mapReady) loadMapPlayers();
+  } catch (err) {
+    $('#avatarMsg').textContent = 'Upload failed: ' + (err.message || err);
+  }
+  e.target.value = '';
+});
 // Round to roughly 3 miles so exact homes are never shown
 const fuzz = (n) => Math.round(n * 20) / 20;
 $('#setLocBtn').addEventListener('click', () => {
@@ -170,7 +220,7 @@ $$('.chip').forEach((c) => c.addEventListener('click', () => runSearch(c.dataset
 let listings = [];
 async function loadListings() {
   $('#listings').innerHTML = '<p class="status">Loading listings...</p>';
-  const { data, error } = await sb.from('listings').select('*, profiles(username, city)').order('created_at', { ascending: false }).limit(200);
+  const { data, error } = await sb.from('listings').select('*, profiles(username, city, avatar_url)').order('created_at', { ascending: false }).limit(200);
   if (error) { $('#listings').innerHTML = '<p class="status">Could not load listings.</p>'; return; }
   listings = data;
   renderListings();
@@ -181,7 +231,8 @@ function listingCard(l, mine) {
     <span class="badge">${esc(l.type)}</span>
     <div class="name">${esc(l.card)}</div>
     <div class="price">${esc(l.price || '')}</div>
-    <div class="meta">${esc(l.condition || '')} · @${esc(seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
+    <div class="meta who">${avatarHtml(l.profiles)} @${esc(seller)}</div>
+    <div class="meta">${esc(l.condition || '')}${l.city ? ' · ' + esc(l.city) : ''}</div>
     <div class="meta">${ago(l.created_at)}</div>
     ${mine ? `<button class="btn" data-del="${l.id}">Remove listing</button>`
       : (user && l.user_id === user.id ? '<span class="meta">Your listing</span>'
@@ -212,7 +263,7 @@ $('#listingForm').addEventListener('submit', async (e) => {
 $('#listingFilter').addEventListener('input', renderListings);
 $('#typeFilter').addEventListener('change', renderListings);
 async function loadMyListings() {
-  const { data } = await sb.from('listings').select('*, profiles(username, city)').eq('user_id', user.id).order('created_at', { ascending: false });
+  const { data } = await sb.from('listings').select('*, profiles(username, city, avatar_url)').eq('user_id', user.id).order('created_at', { ascending: false });
   $('#myListings').innerHTML = (data || []).map((l) => listingCard(l, true)).join('') || '<p class="status">You have no listings yet.</p>';
 }
 document.addEventListener('click', async (e) => {
@@ -247,7 +298,7 @@ let channel = null;
 async function getProfiles(ids) {
   const need = ids.filter((id) => !profilesById[id]);
   if (need.length) {
-    const { data } = await sb.from('profiles').select('id, username, city').in('id', need);
+    const { data } = await sb.from('profiles').select('id, username, city, avatar_url').in('id', need);
     (data || []).forEach((p) => { profilesById[p.id] = p; });
   }
 }
@@ -265,12 +316,12 @@ function renderConvos() {
   if (activePartner && !last[activePartner]) last[activePartner] = null;
   const ids = Object.keys(last).sort((a, b) => new Date(last[b]?.created_at || Date.now()) - new Date(last[a]?.created_at || Date.now()));
   $('#convoList').innerHTML = ids.map((id) => `<div class="convo ${id === activePartner ? 'active' : ''}" data-convo="${id}">
-      <div><b>@${esc(profilesById[id]?.username || 'player')}</b></div>
+      <div class="who">${avatarHtml(profilesById[id])}<b>@${esc(profilesById[id]?.username || 'player')}</b></div>
       <div class="meta">${esc(last[id]?.body || 'New conversation')}</div></div>`).join('') || '<div class="convo">No messages yet. Message a seller from Buy &amp; Trade.</div>';
 }
 function renderThread() {
   const p = profilesById[activePartner];
-  $('#chatHeader').textContent = '@' + (p?.username || 'player') + (p?.city ? ' · ' + p.city : '');
+  $('#chatHeader').innerHTML = `<span class="who">${avatarHtml(p)} @${esc(p?.username || 'player')}${p?.city ? ' · ' + esc(p.city) : ''}</span>`;
   const thread = messages.filter((m) => m.sender === activePartner || m.recipient === activePartner);
   $('#chatMessages').innerHTML = thread.map((m) => `<div class="msg ${m.sender === user.id ? 'me' : ''}">${esc(m.body)}<div class="time">${ago(m.created_at)}</div></div>`).join('') || '<p class="status">Say hi!</p>';
   $('#chatMessages').scrollTop = 1e9;
@@ -332,8 +383,16 @@ function dist(a, b, c, d) {
   const x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
 }
+// Snapchat-style map pins: profile picture with the username under it
+function pinIcon(p, isMe = false) {
+  return L.divIcon({
+    className: 'map-pin' + (isMe ? ' me' : ''),
+    html: `<div class="pin-wrap">${avatarHtml(p)}<div class="pin-name">${isMe ? 'You' : '@' + esc(p.username)}</div></div>`,
+    iconSize: [60, 70], iconAnchor: [30, 35], popupAnchor: [0, -30],
+  });
+}
 async function loadMapPlayers() {
-  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng').eq('show_on_map', true).not('lat', 'is', null).limit(1000);
+  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng, avatar_url').eq('show_on_map', true).not('lat', 'is', null).limit(1000);
   let friendIds = [];
   if (user) {
     const { data: fr } = await sb.from('friends').select('friend_id').eq('user_id', user.id);
@@ -343,9 +402,9 @@ async function loadMapPlayers() {
     .map((p) => ({ ...p, miles: myPos ? dist(myPos.lat, myPos.lng, p.lat, p.lng) : null }))
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
   playerLayer.clearLayers();
-  list.forEach((p) => L.marker([p.lat, p.lng]).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b><br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
+  list.forEach((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b><br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
   const tile = (p) => `<div class="card">
-    <div class="name">@${esc(p.username)}</div>
+    <div class="name who">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
     <div class="meta">${esc(p.city || 'Unknown area')}${p.miles != null ? ' · about ' + p.miles.toFixed(0) + ' mi away' : ''}</div>
     ${p.deck ? `<div class="meta">Plays: ${esc(p.deck)}</div>` : ''}
     ${friendIds.includes(p.id) ? `<button class="btn" data-unadd="${p.id}">Remove trader</button>` : `<button class="btn" data-add="${p.id}">Add trader</button>`}
@@ -361,7 +420,7 @@ $('#locateBtn').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition((p) => {
     myPos = { lat: p.coords.latitude, lng: p.coords.longitude };
     if (meMarker) meMarker.remove();
-    meMarker = L.circleMarker([myPos.lat, myPos.lng], { radius: 9, color: '#c9a227' }).addTo(map).bindPopup('You are here').openPopup();
+    meMarker = L.marker([myPos.lat, myPos.lng], { icon: pinIcon(profile || { username: 'You' }, true) }).addTo(map).bindPopup('You are here').openPopup();
     map.setView([myPos.lat, myPos.lng], 9);
     loadMapPlayers();
   }, () => alert('Could not get your location.'));

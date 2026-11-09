@@ -58,5 +58,17 @@ a{color:var(--accent)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e74c3c;margin-left:4px;vertical-align:middle}
 .msg .time{font-size:.7rem;opacity:.6;margin-top:2px}
 h3{margin-top:24px}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--accent2) center/cover no-repeat;display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:#fff;flex:none;border:2px solid var(--accent);font-size:.9rem;overflow:hidden}
+.avatar.lg{width:56px;height:56px;font-size:1.3rem}
+.avatar.xl{width:110px;height:110px;font-size:2.4rem}
+.avatar-edit{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:16px}
+label.btn{display:inline-block;color:var(--text);font-size:.95rem}
+.who{display:flex;align-items:center;gap:8px}
+.convo .who{margin-bottom:2px}
+.map-pin{background:none;border:none}
+.map-pin .avatar{width:48px;height:48px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.map-pin .pin-name{background:#0b0e1a;color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:8px;margin-top:2px;white-space:nowrap;text-align:center}
+.map-pin .pin-wrap{display:flex;flex-direction:column;align-items:center}
+.map-pin.me .avatar{border-color:var(--accent)}
 footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 @media(max-width:700px){.chat-wrap{grid-template-columns:1fr}.convos{max-height:160px}.hero h1{font-size:1.6rem}}
