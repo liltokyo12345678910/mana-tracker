@@ -72,3 +72,9 @@ label.btn{display:inline-block;color:var(--text);font-size:.95rem}
 .map-pin.me .avatar{border-color:var(--accent)}
 footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 @media(max-width:700px){.chat-wrap{grid-template-columns:1fr}.convos{max-height:160px}.hero h1{font-size:1.6rem}}
+
+.header-avatar{background:none;border:none;padding:0;cursor:pointer;margin-left:8px}
+.header-avatar .avatar{width:40px;height:40px}
+.topbar{gap:8px}
+.pin-note{background:#fff;color:#111;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;margin-bottom:4px;max-width:150px;white-space:normal;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4);position:relative}
+.pin-note:after{content:'';position:absolute;bottom:-5px;left:50%;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#fff}

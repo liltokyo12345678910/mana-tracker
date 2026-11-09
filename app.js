@@ -85,6 +85,7 @@ sb.auth.onAuthStateChange(async (_evt, session) => {
     $('#authBox').classList.add('hidden');
     $('#profileBox').classList.remove('hidden');
     fillProfileForm();
+    updateHeader();
     subscribeMessages();
   } else {
     profile = null;
@@ -92,11 +93,27 @@ sb.auth.onAuthStateChange(async (_evt, session) => {
     $('#heroJoin').classList.remove('hidden');
     $('#authBox').classList.remove('hidden');
     $('#profileBox').classList.add('hidden');
+    updateHeader();
     unsubscribeMessages();
   }
   $('#chatGate').classList.toggle('hidden', !!user);
   $('#chatWrap').classList.toggle('hidden', !user);
 });
+
+// ---------- Header profile picture ----------
+function updateHeader() {
+  const h = $('#headerAvatar');
+  if (user && profile) {
+    h.innerHTML = avatarHtml(profile);
+    h.classList.remove('hidden');
+    $('#accountTab').classList.add('hidden');
+  } else {
+    h.classList.add('hidden');
+    $('#accountTab').classList.remove('hidden');
+  }
+  $('#noteForm').classList.toggle('hidden', !user);
+  $('#noteInput').value = profile?.note || '';
+}
 
 // ---------- Profile ----------
 let pendingLoc = null;
@@ -106,6 +123,7 @@ function fillProfileForm() {
   f.username.value = profile.username || '';
   f.city.value = profile.city || '';
   f.deck.value = profile.deck || '';
+  f.note.value = profile.note || '';
   f.show_on_map.checked = !!profile.show_on_map;
   $('#avatarPreview').outerHTML = avatarHtml(profile, 'xl').replace('<span class="avatar xl"', '<span id="avatarPreview" class="avatar xl"');
   $('#locMsg').textContent = profile.lat ? 'Location saved (approximate).' : 'No location saved yet.';
@@ -143,6 +161,7 @@ $('#avatarInput').addEventListener('change', async (e) => {
     profile = data;
     profilesById[user.id] = data;
     fillProfileForm();
+    updateHeader();
     $('#avatarMsg').textContent = 'Looking good!';
     if (mapReady) loadMapPlayers();
   } catch (err) {
@@ -165,7 +184,7 @@ $('#profileForm').addEventListener('submit', async (e) => {
   const f = e.target;
   const username = f.username.value.trim();
   if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) { $('#profileMsg').textContent = 'Username must be 3-24 letters, numbers or underscores.'; return; }
-  const upd = { username, city: f.city.value.trim() || null, deck: f.deck.value.trim() || null, show_on_map: f.show_on_map.checked };
+  const upd = { username, city: f.city.value.trim() || null, deck: f.deck.value.trim() || null, note: f.note.value.trim().slice(0, 50) || null, show_on_map: f.show_on_map.checked };
   if (pendingLoc) Object.assign(upd, pendingLoc);
   const { data, error } = await sb.from('profiles').update(upd).eq('id', user.id).select().single();
   if (error) { $('#profileMsg').textContent = error.message.includes('duplicate') ? 'That username is taken.' : error.message; return; }
@@ -173,6 +192,7 @@ $('#profileForm').addEventListener('submit', async (e) => {
   $('#accountTab').textContent = '@' + profile.username;
   $('#profileMsg').textContent = 'Saved!';
   fillProfileForm();
+  updateHeader();
   if (mapReady) loadMapPlayers();
 });
 
@@ -387,12 +407,12 @@ function dist(a, b, c, d) {
 function pinIcon(p, isMe = false) {
   return L.divIcon({
     className: 'map-pin' + (isMe ? ' me' : ''),
-    html: `<div class="pin-wrap">${avatarHtml(p)}<div class="pin-name">${isMe ? 'You' : '@' + esc(p.username)}</div></div>`,
-    iconSize: [60, 70], iconAnchor: [30, 35], popupAnchor: [0, -30],
+    html: `<div class="pin-wrap">${p.note ? `<div class="pin-note">${esc(p.note)}</div>` : ''}${avatarHtml(p)}<div class="pin-name">${isMe ? 'You' : '@' + esc(p.username)}</div></div>`,
+    iconSize: [150, p.note ? 110 : 70], iconAnchor: [75, p.note ? 75 : 35], popupAnchor: [0, -30],
   });
 }
 async function loadMapPlayers() {
-  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng, avatar_url').eq('show_on_map', true).not('lat', 'is', null).limit(1000);
+  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng, avatar_url, note').eq('show_on_map', true).not('lat', 'is', null).limit(1000);
   let friendIds = [];
   if (user) {
     const { data: fr } = await sb.from('friends').select('friend_id').eq('user_id', user.id);
@@ -402,7 +422,7 @@ async function loadMapPlayers() {
     .map((p) => ({ ...p, miles: myPos ? dist(myPos.lat, myPos.lng, p.lat, p.lng) : null }))
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
   playerLayer.clearLayers();
-  list.forEach((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b><br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
+  list.forEach((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b>${p.note ? '<br><i>' + esc(p.note) + '</i>' : ''}<br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
   const tile = (p) => `<div class="card">
     <div class="name who">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
     <div class="meta">${esc(p.city || 'Unknown area')}${p.miles != null ? ' · about ' + p.miles.toFixed(0) + ' mi away' : ''}</div>
@@ -425,6 +445,20 @@ $('#locateBtn').addEventListener('click', () => {
     loadMapPlayers();
   }, () => alert('Could not get your location.'));
 });
+
+// Note over your own pin
+async function saveNote(note) {
+  if (!user) return;
+  const { data, error } = await sb.from('profiles').update({ note: note || null }).eq('id', user.id).select().single();
+  if (error) { alert('Could not save note: ' + error.message); return; }
+  profile = data;
+  updateHeader();
+  fillProfileForm();
+  if (meMarker && myPos) { meMarker.setIcon(pinIcon(profile, true)); }
+  loadMapPlayers();
+}
+$('#noteForm').addEventListener('submit', (e) => { e.preventDefault(); saveNote($('#noteInput').value.trim().slice(0, 50)); });
+$('#clearNote').addEventListener('click', () => { $('#noteInput').value = ''; saveNote(''); });
 
 // ---------- Start ----------
 setAuthMode(true);

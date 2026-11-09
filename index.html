@@ -19,6 +19,7 @@
     <button class="tab" data-tab="map">Map</button>
     <button class="tab" data-tab="account" id="accountTab">Sign in</button>
   </nav>
+  <button id="headerAvatar" class="header-avatar hidden" data-goto="account" title="Your profile"></button>
 </header>
 
 <main>
@@ -66,6 +67,7 @@
       <form id="profileForm" class="stack">
         <label>Username<input name="username" required maxlength="24"></label>
         <label>City<input name="city"></label>
+        <label>Map note (50 characters max)<input name="note" maxlength="50" placeholder="e.g. Trading at my LGS Friday!"></label>
         <label>Main deck / commander<input name="deck" placeholder="e.g. Myrel, Shield of Argive"></label>
         <label class="check"><input type="checkbox" name="show_on_map"> Show me on the trader map (approximate area only)</label>
         <button class="btn" type="button" id="setLocBtn">Use my current location</button>
@@ -143,6 +145,11 @@
       <button class="btn primary" id="locateBtn">Find players near me</button>
     </div>
     <p class="small">Only players who turn on "Show me on the trader map" in their profile appear here, and only their approximate area.</p>
+    <form id="noteForm" class="row hidden">
+      <input id="noteInput" maxlength="50" placeholder="Add a note over your pin (50 characters max)">
+      <button class="btn primary" type="submit">Post note</button>
+      <button class="btn" type="button" id="clearNote">Clear</button>
+    </form>
     <div id="mapView"></div>
     <h3 id="friendsTitle" class="hidden">Your traders</h3>
     <div id="friendsList" class="grid"></div>
