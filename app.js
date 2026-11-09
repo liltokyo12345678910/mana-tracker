@@ -75,7 +75,9 @@ $('#authForm').addEventListener('submit', async (e) => {
 });
 $('#signOutBtn').addEventListener('click', async () => { await sb.auth.signOut(); showTab('home'); });
 
-sb.auth.onAuthStateChange(async (_evt, session) => {
+// Supabase recommends not awaiting other calls directly inside this callback, so defer the work
+sb.auth.onAuthStateChange((_evt, session) => { setTimeout(() => handleAuth(session), 0); });
+async function handleAuth(session) {
   user = session?.user || null;
   if (user) {
     const { data } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
@@ -98,7 +100,7 @@ sb.auth.onAuthStateChange(async (_evt, session) => {
   }
   $('#chatGate').classList.toggle('hidden', !!user);
   $('#chatWrap').classList.toggle('hidden', !user);
-});
+}
 
 // ---------- Header profile picture ----------
 function updateHeader() {
@@ -424,12 +426,12 @@ document.addEventListener('click', async (e) => {
   if (add) {
     if (!requireLogin('Sign in to add traders.')) return;
     await sb.from('friends').insert({ friend_id: add.dataset.add });
-    loadMapPlayers();
+    if (mapReady) loadMapPlayers();
   }
   const rm = e.target.closest('[data-unadd]');
   if (rm) {
     await sb.from('friends').delete().eq('user_id', user.id).eq('friend_id', rm.dataset.unadd);
-    loadMapPlayers();
+    if (mapReady) loadMapPlayers();
   }
 });
 
@@ -578,7 +580,7 @@ async function saveNote(note) {
   updateHeader();
   fillProfileForm();
   if (meMarker && myPos) { meMarker.setIcon(pinIcon(profile, true)); }
-  loadMapPlayers();
+  if (mapReady) loadMapPlayers();
 }
 $('#noteForm').addEventListener('submit', (e) => { e.preventDefault(); saveNote($('#noteInput').value.trim().slice(0, 50)); });
 $('#clearNote').addEventListener('click', () => { $('#noteInput').value = ''; saveNote(''); });
