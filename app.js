@@ -577,7 +577,7 @@ let myPos = null;
 function initMap() {
   if (mapReady) { setTimeout(() => map.invalidateSize(), 100); loadMapPlayers(); return; }
   mapReady = true;
-  map = L.map('mapView').setView([39.8, -98.6], 4);
+  map = L.map('mapView', { worldCopyJump: true, minZoom: 2 }).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
   playerLayer = L.layerGroup().addTo(map);
   loadMapPlayers();
@@ -596,7 +596,7 @@ function pinIcon(p, isMe = false) {
   });
 }
 async function loadMapPlayers() {
-  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng, avatar_url, note').eq('show_on_map', true).not('lat', 'is', null).limit(1000);
+  const { data: players } = await sb.from('profiles').select('id, username, city, deck, lat, lng, avatar_url, note').eq('show_on_map', true).not('lat', 'is', null).limit(5000);
   let friendIds = [];
   if (user) {
     const { data: fr } = await sb.from('friends').select('friend_id').eq('user_id', user.id);
@@ -623,6 +623,7 @@ async function loadMapPlayers() {
   $('#friendsList').innerHTML = friends.map(tile).join('');
   $('#nearbyList').innerHTML = list.map(tile).join('') || '<p class="status">No players on the map yet. Turn on "Show me on the trader map" in your profile to be the first!</p>';
 }
+$('#worldBtn')?.addEventListener('click', () => { if (map) map.setView([20, 0], 2); });
 $('#locateBtn').addEventListener('click', () => {
   if (!navigator.geolocation) return alert('Location is not available on this device.');
   navigator.geolocation.getCurrentPosition((p) => {
