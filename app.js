@@ -882,11 +882,13 @@ async function loadStores() {
   let els = storeCache[key];
   if (!els) {
     $('#storeMsg').firstChild.textContent = 'Finding game stores... ';
-    const q = `[out:json][timeout:25];(nwr["shop"="games"](${key});nwr["shop"~"collector|hobby|comics"]["name"~"[Gg]ame|[Cc]ard|[Mm]agic|MTG|[Cc]omic",i](${key}););out center 400;`;
+    const q = `[out:json][timeout:12];(nwr["shop"="games"](${key});nwr["shop"~"collector|hobby|comics"]["name"~"[Gg]ame|[Cc]ard|[Mm]agic|MTG|[Cc]omic",i](${key}););out center 400;`;
     const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass-api.de/api/interpreter'];
     for (const m of mirrors) {
       try {
-        const res = await fetch(m, { method: 'POST', body: 'data=' + encodeURIComponent(q) });
+        const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 12000);
+        const res = await fetch(m, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal });
+        clearTimeout(tm);
         if (!res.ok) throw new Error(res.status);
         els = (await res.json()).elements || [];
         storeCache[key] = els;
