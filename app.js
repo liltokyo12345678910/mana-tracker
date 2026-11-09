@@ -1026,14 +1026,21 @@ document.addEventListener('click', async (e) => {
   if (q) {
     const r = coll.find((x) => String(x.id) === q.dataset.cq); if (!r) return;
     const n = r.quantity + Number(q.dataset.d);
-    if (n < 1) { if (!confirm('Remove ' + r.name + ' from your collection?')) return; await sb.from('collection').delete().eq('id', r.id); coll = coll.filter((x) => x !== r); }
+    if (n < 1) { const { data: gone } = await sb.from('collection').delete().eq('id', r.id).select('id'); if (!gone?.length) { alert('Could not remove. Please try again.'); return; } coll = coll.filter((x) => x !== r); }
     else { await sb.from('collection').update({ quantity: n }).eq('id', r.id); r.quantity = n; }
     renderCollection();
   }
   const rm = e.target.closest('[data-crm]');
   if (rm) {
     const r = coll.find((x) => String(x.id) === rm.dataset.crm);
-    if (r && confirm('Remove ' + r.name + ' from your collection?')) { await sb.from('collection').delete().eq('id', r.id); coll = coll.filter((x) => x !== r); renderCollection(); }
+    if (!r) return;
+    // two-tap confirm right on the button (no popup dialog)
+    if (rm.dataset.armed !== '1') { rm.dataset.armed = '1'; rm.textContent = 'Tap again to remove'; setTimeout(() => { if (rm.isConnected) { rm.dataset.armed = ''; rm.textContent = 'Remove'; } }, 4000); return; }
+    rm.disabled = true; rm.textContent = 'Removing...';
+    const { data: gone, error } = await sb.from('collection').delete().eq('id', r.id).select('id');
+    if (error || !gone?.length) { rm.disabled = false; rm.dataset.armed = ''; rm.textContent = 'Remove'; alert('Could not remove' + (error ? ': ' + error.message : '. Please try again.')); return; }
+    coll = coll.filter((x) => x !== r);
+    renderCollection();
   }
 });
 // Name autocomplete
