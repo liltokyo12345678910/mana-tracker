@@ -1,4 +1,4 @@
-// Mana Tracker
+// Mythic Spell Swap
 // Market: live Scryfall data. Accounts, listings, chat and map: Supabase.
 
 const SUPABASE_URL = 'https://txmeggmwqyfcnnsiexck.supabase.co';
@@ -802,10 +802,10 @@ function rareCardHtml(rc) {
     <div class="meta">${esc(rc.name)} · ${esc(rc.set_name || '')}</div>`;
 }
 async function claimRare() {
-  if (!user) { openModal('<h2>One-of-a-kind card</h2><p>You found a secret! Sign in or create an account to unlock a card nobody else on Mana Tracker can ever get.</p><button class="btn primary" data-goto-account>Sign in</button>'); return; }
+  if (!user) { openModal('<h2>One-of-a-kind card</h2><p>You found a secret! Sign in or create an account to unlock a card nobody else on Mythic Spell Swap can ever get.</p><button class="btn primary" data-goto-account>Sign in</button>'); return; }
   openModal('<p class="status">Opening your card...</p>');
   const mine = await myEgg();
-  if (mine?.rare_card) { $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>Your one-of-a-kind card</h2>${rareCardHtml(mine.rare_card)}<p class="small">Only you have this card on Mana Tracker. It shows on your profile.</p></div>`; return; }
+  if (mine?.rare_card) { $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>Your one-of-a-kind card</h2>${rareCardHtml(mine.rare_card)}<p class="small">Only you have this card on Mythic Spell Swap. It shows on your profile.</p></div>`; return; }
   for (let i = 0; i < 6; i++) {
     try {
       const r = await fetch('https://api.scryfall.com/cards/random?q=' + encodeURIComponent('(rarity:mythic or rarity:rare) game:paper -is:funny'));
@@ -815,7 +815,7 @@ async function claimRare() {
       const card = { id: c.id, name: c.name, set_name: c.set_name, image: img, hue: Math.floor(Math.random() * 360) };
       const { data, error } = await sb.rpc('claim_rare_card', { card });
       if (error) break;
-      if (data) { $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>You unlocked a 1 of 1!</h2>${rareCardHtml(data)}<p class="small">Nobody else on Mana Tracker can ever get this card. It now shows on your profile.</p></div>`; return; }
+      if (data) { $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>You unlocked a 1 of 1!</h2>${rareCardHtml(data)}<p class="small">Nobody else on Mythic Spell Swap can ever get this card. It now shows on your profile.</p></div>`; return; }
     } catch (err) { /* try again */ }
   }
   $('#modalBody').innerHTML = '<p class="status">Could not open a card right now. Try again in a moment.</p>';
