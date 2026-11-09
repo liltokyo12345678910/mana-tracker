@@ -487,7 +487,8 @@ document.addEventListener('click', async (e) => {
   }
   const add = e.target.closest('[data-add]');
   if (add) {
-    if (!requireLogin('Sign in to add traders.')) return;
+    if (!requireLogin('Sign in to add friends.')) return;
+    closeModalIfNot(add);
     await sb.from('friends').insert({ friend_id: add.dataset.add });
     if (mapReady) loadMapPlayers();
     if (openProfileId) openProfile(openProfileId);
@@ -623,7 +624,7 @@ async function loadMapPlayers() {
     <div class="name who link" data-profile="${p.id}">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
     <div class="meta">${esc(p.city || 'Unknown area')}${p.miles != null ? ' · about ' + p.miles.toFixed(0) + ' mi away' : ''}</div>
     ${p.deck ? `<div class="meta">Plays: ${esc(p.deck)}</div>` : ''}
-    ${friendIds.includes(p.id) ? `<button class="btn" data-unadd="${p.id}">Remove trader</button>` : `<button class="btn" data-add="${p.id}">Add trader</button>`}
+    ${friendIds.includes(p.id) ? `<button class="btn" data-unadd="${p.id}">Remove friend</button>` : `<button class="btn primary" data-add="${p.id}">+ Add friend</button>`}
     <button class="btn" data-msg="${p.id}">Message</button>
   </div>`;
   const friends = list.filter((p) => friendIds.includes(p.id));
@@ -717,7 +718,7 @@ async function openProfile(id) {
       <div><b>${decks.length + (p.deck ? 1 : 0)}</b><span>Decks</span></div>
     </div>
     ${me ? '<p class="small">This is how other players see your profile.</p>' : `<div class="row">
-      ${following ? `<button class="btn" data-unadd="${p.id}">Unfollow</button>` : `<button class="btn primary" data-add="${p.id}">Follow</button>`}
+      ${following ? `<button class="btn" data-unadd="${p.id}">Remove friend</button>` : `<button class="btn primary" data-add="${p.id}">+ Add friend</button>`}
       <button class="btn" data-msg="${p.id}">Message</button></div>`}
     <h3>Decks</h3>
     ${p.deck ? `<div class="card main-deck"><div class="meta">Main deck / commander</div><div class="name">${esc(p.deck)}</div></div>` : ''}
@@ -873,11 +874,17 @@ async function loadStores() {
   if (!els) {
     $('#storeMsg').firstChild.textContent = 'Finding game stores... ';
     const q = `[out:json][timeout:25];(nwr["shop"="games"](${key});nwr["shop"~"collector|hobby|comics"]["name"~"[Gg]ame|[Cc]ard|[Mm]agic|MTG|[Cc]omic",i](${key}););out center 400;`;
-    try {
-      const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) });
-      els = (await res.json()).elements || [];
-      storeCache[key] = els;
-    } catch (err) { $('#storeMsg').firstChild.textContent = 'Could not load game stores right now. '; return; }
+    const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass-api.de/api/interpreter'];
+    for (const m of mirrors) {
+      try {
+        const res = await fetch(m, { method: 'POST', body: 'data=' + encodeURIComponent(q) });
+        if (!res.ok) throw new Error(res.status);
+        els = (await res.json()).elements || [];
+        storeCache[key] = els;
+        break;
+      } catch (err) { await new Promise((ok) => setTimeout(ok, 800)); }
+    }
+    if (!els) { $('#storeMsg').firstChild.textContent = 'Could not load game stores right now, move the map to try again. '; return; }
   }
   storeLayer.clearLayers();
   els.forEach((s) => {
@@ -891,3 +898,26 @@ async function loadStores() {
   $('#storeMsg').firstChild.textContent = `${els.length} game store${els.length === 1 ? '' : 's'} in this area. Store data from OpenStreetMap. Official Wizards stores: `;
 }
 $('#storesToggle').addEventListener('change', loadStores);
+
+// ---------- Find friends by username ----------
+function closeModalIfNot() {}
+$('#findForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const q = $('#findInput').value.trim().replace(/[%_,()]/g, '');
+  if (!q) { $('#findList').innerHTML = ''; return; }
+  $('#findList').innerHTML = '<p class="status">Searching...</p>';
+  const { data } = await sb.from('profiles').select('id, username, city, deck, avatar_url').ilike('username', '%' + q + '%').limit(24);
+  let friendIds = [];
+  if (user) { const { data: fr } = await sb.from('friends').select('friend_id').eq('user_id', user.id); friendIds = (fr || []).map((f) => f.friend_id); }
+  const rows = (data || []).filter((p) => !user || p.id !== user.id);
+  $('#findList').innerHTML = rows.map((p) => `<div class="card">
+    <div class="name who link" data-profile="${p.id}">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
+    <div class="meta">${esc(p.city || 'Unknown area')}</div>
+    ${friendIds.includes(p.id) ? `<button class="btn" data-unadd="${p.id}">Remove friend</button>` : `<button class="btn primary" data-add="${p.id}">+ Add friend</button>`}
+    <button class="btn" data-profile="${p.id}">View profile</button>
+  </div>`).join('') || '<p class="status">No players found with that name.</p>';
+});
+// refresh search results after adding/removing a friend
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#findList [data-add], #findList [data-unadd]')) setTimeout(() => $('#findForm').requestSubmit(), 600);
+});

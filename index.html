@@ -208,8 +208,14 @@
     </form>
     <p id="storeMsg" class="small">Zoom in on any city to see game stores there. Store data from OpenStreetMap. Official Wizards stores: <a href="https://locator.wizards.com" target="_blank" rel="noopener">locator.wizards.com</a></p>
     <div id="mapView"></div>
-    <h3 id="friendsTitle" class="hidden">Your traders</h3>
+    <h3 id="friendsTitle" class="hidden">Your friends</h3>
     <div id="friendsList" class="grid"></div>
+    <h3>Find friends</h3>
+    <form id="findForm" class="row">
+      <input id="findInput" maxlength="24" placeholder="Search players by username" autocomplete="off">
+      <button class="btn primary" type="submit">Search</button>
+    </form>
+    <div id="findList" class="grid"></div>
     <h3>Players</h3>
     <div id="nearbyList" class="grid"></div>
   </section>
