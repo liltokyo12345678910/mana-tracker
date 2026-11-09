@@ -31,6 +31,7 @@ function showTab(id) {
   if (id === 'map') initMap();
   if (id === 'market' && !$('#marketGrid').children.length) runSearch('usd>1000');
   if (id === 'trade') loadListings();
+  if (id === 'news') loadNews();
   if (id === 'chat') { $('#unreadDot').classList.add('hidden'); loadConvos(); }
   if (id === 'account' && user) loadMyListings();
   window.scrollTo(0, 0);
@@ -98,6 +99,7 @@ async function handleAuth(session) {
     $('#authBox').classList.add('hidden');
     $('#profileBox').classList.remove('hidden');
     fillProfileForm();
+    refreshOwnerUi();
     updateHeader();
     subscribeMessages();
     if ($('#account').classList.contains('active')) loadMyListings();
@@ -109,6 +111,7 @@ async function handleAuth(session) {
     $('#authBox').classList.remove('hidden');
     $('#profileBox').classList.add('hidden');
     updateHeader();
+    refreshOwnerUi();
     unsubscribeMessages();
   }
   $('#chatGate').classList.toggle('hidden', !!user);
@@ -298,7 +301,7 @@ function listingCard(l, mine) {
     <div class="price">${esc(l.price || '')}</div>
     ${l.category === 'lot' && l.quantity ? `<div class="meta">${Number(l.quantity).toLocaleString()} cards</div>` : ''}
     ${l.category === 'single' && l.condition ? `<div class="meta">${esc(l.condition)}</div>` : ''}
-    <div class="meta who">${avatarHtml(l.profiles)} @${esc(seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
+    <div class="meta who link" data-profile="${l.user_id}">${avatarHtml(l.profiles)} @${esc(seller)}${l.city ? ' · ' + esc(l.city) : ''}</div>
     <div class="meta">${ago(l.created_at)}</div>
     ${mine || (user && l.user_id === user.id) ? `<button class="btn danger" data-del="${l.id}">Take down post</button>`
       : (false ? ''
@@ -478,6 +481,7 @@ document.addEventListener('click', async (e) => {
   }
   const msg = e.target.closest('[data-msg]');
   if (msg) {
+    closeModal();
     if (!requireLogin('Sign in to message players.')) return;
     startChat(msg.dataset.msg, msg.dataset.card ? `Hi! Is your ${msg.dataset.card} still available?` : '', msg.dataset.listing || null);
   }
@@ -486,11 +490,13 @@ document.addEventListener('click', async (e) => {
     if (!requireLogin('Sign in to add traders.')) return;
     await sb.from('friends').insert({ friend_id: add.dataset.add });
     if (mapReady) loadMapPlayers();
+    if (openProfileId) openProfile(openProfileId);
   }
   const rm = e.target.closest('[data-unadd]');
   if (rm) {
     await sb.from('friends').delete().eq('user_id', user.id).eq('friend_id', rm.dataset.unadd);
     if (mapReady) loadMapPlayers();
+    if (openProfileId) openProfile(openProfileId);
   }
 });
 
@@ -572,7 +578,7 @@ function subscribeMessages() {
 function unsubscribeMessages() { if (channel) { sb.removeChannel(channel); channel = null; } }
 
 // ---------- Map ----------
-let map, playerLayer, meMarker;
+let map, playerLayer, meMarker, storeLayer, storeTimer;
 let myPos = null;
 function initMap() {
   if (mapReady) { setTimeout(() => map.invalidateSize(), 100); loadMapPlayers(); return; }
@@ -580,6 +586,8 @@ function initMap() {
   map = L.map('mapView', { worldCopyJump: true, minZoom: 2 }).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
   playerLayer = L.layerGroup().addTo(map);
+  storeLayer = L.layerGroup().addTo(map);
+  map.on('moveend', () => { clearTimeout(storeTimer); storeTimer = setTimeout(loadStores, 700); });
   loadMapPlayers();
 }
 function dist(a, b, c, d) {
@@ -606,13 +614,13 @@ async function loadMapPlayers() {
     .map((p) => ({ ...p, miles: myPos ? dist(myPos.lat, myPos.lng, p.lat, p.lng) : null }))
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
   playerLayer.clearLayers();
-  list.forEach((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b>${p.note ? '<br><i>' + esc(p.note) + '</i>' : ''}<br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}`));
+  list.forEach((p) => L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(playerLayer).bindPopup(`<b>@${esc(p.username)}</b>${p.note ? '<br><i>' + esc(p.note) + '</i>' : ''}<br>${esc(p.city || '')}${p.deck ? '<br>Plays: ' + esc(p.deck) : ''}<br><a href="#" data-profile="${p.id}">View profile</a>`));
   // Show your own saved spot too (unless "Find players near me" already placed you)
   if (user && profile?.show_on_map && profile.lat != null && !myPos) {
     L.marker([profile.lat, profile.lng], { icon: pinIcon(profile, true) }).addTo(playerLayer).bindPopup('This is you' + (profile.note ? '<br><i>' + esc(profile.note) + '</i>' : ''));
   }
   const tile = (p) => `<div class="card">
-    <div class="name who">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
+    <div class="name who link" data-profile="${p.id}">${avatarHtml(p, 'lg')} @${esc(p.username)}</div>
     <div class="meta">${esc(p.city || 'Unknown area')}${p.miles != null ? ' · about ' + p.miles.toFixed(0) + ' mi away' : ''}</div>
     ${p.deck ? `<div class="meta">Plays: ${esc(p.deck)}</div>` : ''}
     ${friendIds.includes(p.id) ? `<button class="btn" data-unadd="${p.id}">Remove trader</button>` : `<button class="btn" data-add="${p.id}">Add trader</button>`}
@@ -655,3 +663,231 @@ $('#loadMore').addEventListener('click', loadMoreCards);
 
 // ---------- Start ----------
 setAuthMode(true);
+
+
+// ---------- Modal ----------
+let openProfileId = null;
+function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').classList.remove('hidden'); }
+function closeModal() { $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; openProfileId = null; gameOn = false; }
+$('#modalX').addEventListener('click', closeModal);
+$('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+// ---------- Public profile page ----------
+const isOwnerAcct = () => profile?.username === 'Young_mav_hallow';
+function badgesHtml(egg) {
+  if (!egg) return '';
+  const b = [];
+  if (egg.founder_no) b.push(`<span class="pbadge founder">&#9733; Founder #${egg.founder_no}</span>`);
+  if (egg.rare_card) b.push(`<span class="pbadge rare">1 of 1: ${esc(egg.rare_card.name)}</span>`);
+  if (egg.game_best) b.push(`<span class="pbadge game">Guess the card best: ${egg.game_best}</span>`);
+  return b.length ? `<div class="pbadges">${b.join('')}</div>` : '';
+}
+async function openProfile(id) {
+  openProfileId = id;
+  if ($('#modal').classList.contains('hidden')) openModal('<p class="status">Loading profile...</p>');
+  const [{ data: p }, { data: counts }, { data: egg }, { data: lst }] = await Promise.all([
+    sb.from('profiles').select('id, username, city, deck, note, avatar_url').eq('id', id).maybeSingle(),
+    sb.rpc('follow_counts', { uid: id }),
+    sb.from('easter_eggs').select('*').eq('user_id', id).maybeSingle(),
+    sb.from('listings').select('*, profiles(username, city, avatar_url)').eq('user_id', id).order('created_at', { ascending: false }).limit(60),
+  ]);
+  if (openProfileId !== id) return;
+  if (!p) { $('#modalBody').innerHTML = '<p class="status">Profile not found.</p>'; return; }
+  const c = (counts && counts[0]) || { followers: 0, following: 0 };
+  let following = false;
+  if (user && user.id !== id) {
+    const { data: fr } = await sb.from('friends').select('friend_id').eq('user_id', user.id).eq('friend_id', id);
+    following = !!(fr && fr.length);
+  }
+  const listingsAll = lst || [];
+  const decks = listingsAll.filter((l) => l.category === 'deck');
+  const other = listingsAll.filter((l) => l.category !== 'deck');
+  const me = user && user.id === id;
+  $('#modalBody').innerHTML = `<div class="pview">
+    <div class="phead">${avatarHtml(p, 'xl')}
+      <div><h2>@${esc(p.username)}</h2>
+      ${p.city ? `<div class="meta">${esc(p.city)}</div>` : ''}
+      ${p.note ? `<div class="pnote">"${esc(p.note)}"</div>` : ''}</div></div>
+    ${badgesHtml(egg)}
+    <div class="pstats">
+      <div><b>${c.followers}</b><span>Followers</span></div>
+      <div><b>${c.following}</b><span>Following</span></div>
+      <div><b>${listingsAll.length}</b><span>Listings</span></div>
+      <div><b>${decks.length + (p.deck ? 1 : 0)}</b><span>Decks</span></div>
+    </div>
+    ${me ? '<p class="small">This is how other players see your profile.</p>' : `<div class="row">
+      ${following ? `<button class="btn" data-unadd="${p.id}">Unfollow</button>` : `<button class="btn primary" data-add="${p.id}">Follow</button>`}
+      <button class="btn" data-msg="${p.id}">Message</button></div>`}
+    <h3>Decks</h3>
+    ${p.deck ? `<div class="card main-deck"><div class="meta">Main deck / commander</div><div class="name">${esc(p.deck)}</div></div>` : ''}
+    ${decks.length ? `<div class="grid">${decks.map((l) => listingCard(l)).join('')}</div>` : (p.deck ? '' : '<p class="status">No decks yet.</p>')}
+    ${egg?.rare_card ? `<h3>One-of-a-kind card</h3>${rareCardHtml(egg.rare_card)}` : ''}
+    <h3>Listings</h3>
+    ${other.length ? `<div class="grid">${other.map((l) => listingCard(l)).join('')}</div>` : '<p class="status">No listings yet.</p>'}
+  </div>`;
+}
+$('#viewMyProfile').addEventListener('click', () => { if (user) openProfile(user.id); });
+document.addEventListener('click', (e) => {
+  const pr = e.target.closest('[data-profile]');
+  if (pr) { e.preventDefault(); openProfile(pr.dataset.profile); }
+});
+
+// ---------- News ----------
+function refreshOwnerUi() { $('#newsForm').classList.toggle('hidden', !isOwnerAcct()); if ($('#news').classList.contains('active')) loadNews(); }
+async function loadNews() {
+  const { data, error } = await sb.from('news').select('*').order('created_at', { ascending: false }).limit(50);
+  if (error) { $('#newsList').innerHTML = '<p class="status">Could not load news.</p>'; return; }
+  $('#newsList').innerHTML = (data || []).map((n) => `<article class="card news-item">
+    <div class="name">${esc(n.title)}</div>
+    ${n.body ? `<div>${esc(n.body).replace(/\n/g, '<br>')}</div>` : ''}
+    <div class="meta">${new Date(n.created_at).toLocaleDateString()} · ${ago(n.created_at)}</div>
+    ${isOwnerAcct() ? `<button class="btn danger" data-news-del="${n.id}">Delete</button>` : ''}
+  </article>`).join('') || '<p class="status">No news yet. Check back soon!</p>';
+}
+$('#newsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  $('#newsMsg').textContent = 'Posting...';
+  const { error } = await sb.from('news').insert({ title: d.title.trim(), body: (d.body || '').trim() || null });
+  if (error) { $('#newsMsg').textContent = 'Could not post: ' + error.message; return; }
+  e.target.reset(); $('#newsMsg').textContent = 'Posted!';
+  loadNews();
+});
+document.addEventListener('click', async (e) => {
+  const nd = e.target.closest('[data-news-del]');
+  if (nd && confirm('Delete this news post?')) { await sb.from('news').delete().eq('id', nd.dataset.newsDel); loadNews(); }
+});
+
+// ---------- Secret menu (three lines -> three dots -> Easter eggs) ----------
+$('#newsMenuBtn').addEventListener('click', (e) => { e.stopPropagation(); $('#dotsPop').classList.toggle('hidden'); $('#eggMenu').classList.add('hidden'); });
+$('#dotsBtn').addEventListener('click', (e) => { e.stopPropagation(); $('#eggMenu').classList.toggle('hidden'); $('#dotsPop').classList.add('hidden'); });
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.egg-wrap')) { $('#dotsPop').classList.add('hidden'); $('#eggMenu').classList.add('hidden'); }
+  const egg = e.target.closest('[data-egg]');
+  if (!egg) return;
+  $('#eggMenu').classList.add('hidden');
+  if (egg.dataset.egg === 'founder') claimFounder();
+  if (egg.dataset.egg === 'rare') claimRare();
+  if (egg.dataset.egg === 'game') startGame();
+});
+async function myEgg() {
+  if (!user) return null;
+  const { data } = await sb.from('easter_eggs').select('*').eq('user_id', user.id).maybeSingle();
+  return data;
+}
+async function claimFounder() {
+  if (!user) { openModal('<h2>&#9733; Founder badge</h2><p>You found a secret! Sign in or create an account to claim your Founder badge.</p><button class="btn primary" data-goto-account>Sign in</button>'); return; }
+  openModal('<p class="status">Checking...</p>');
+  const { data: n, error } = await sb.rpc('claim_founder');
+  if (error) { $('#modalBody').innerHTML = '<p class="status">Something went wrong. Try again.</p>'; return; }
+  $('#modalBody').innerHTML = n
+    ? `<div class="egg-reveal"><div class="big-badge">&#9733;</div><h2>Founder #${n}</h2><p>You're one of the first 100 players to find the secret menu. This badge now shows on your profile forever.</p></div>`
+    : '<div class="egg-reveal"><h2>So close!</h2><p>All 100 Founder badges have already been claimed. Try the other secrets in the menu.</p></div>';
+}
+function rareCardHtml(rc) {
+  return `<div class="rare-card" style="--hue:${Number(rc.hue) || 0}">
+    <img src="${esc(rc.image)}" alt="${esc(rc.name)}">
+    <div class="rare-tag">1 of 1</div></div>
+    <div class="meta">${esc(rc.name)} · ${esc(rc.set_name || '')}</div>`;
+}
+async function claimRare() {
+  if (!user) { openModal('<h2>One-of-a-kind card</h2><p>You found a secret! Sign in or create an account to unlock a card nobody else on Mana Tracker can ever get.</p><button class="btn primary" data-goto-account>Sign in</button>'); return; }
+  openModal('<p class="status">Opening your card...</p>');
+  const mine = await myEgg();
+  if (mine?.rare_card) { $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>Your one-of-a-kind card</h2>${rareCardHtml(mine.rare_card)}<p class="small">Only you have this card on Mana Tracker. It shows on your profile.</p></div>`; return; }
+  for (let i = 0; i < 6; i++) {
+    try {
+      const r = await fetch('https://api.scryfall.com/cards/random?q=' + encodeURIComponent('(rarity:mythic or rarity:rare) game:paper -is:funny'));
+      const c = await r.json();
+      const img = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal;
+      if (!img) continue;
+      const card = { id: c.id, name: c.name, set_name: c.set_name, image: img, hue: Math.floor(Math.random() * 360) };
+      const { data, error } = await sb.rpc('claim_rare_card', { card });
+      if (error) break;
+      if (data) { $('#modalBody').innerHTML = `<div class="egg-reveal"><h2>You unlocked a 1 of 1!</h2>${rareCardHtml(data)}<p class="small">Nobody else on Mana Tracker can ever get this card. It now shows on your profile.</p></div>`; return; }
+    } catch (err) { /* try again */ }
+  }
+  $('#modalBody').innerHTML = '<p class="status">Could not open a card right now. Try again in a moment.</p>';
+}
+document.addEventListener('click', (e) => { if (e.target.closest('[data-goto-account]')) { closeModal(); setAuthMode(false); showTab('account'); } });
+
+// Mini-game: guess the card from its art
+let gameOn = false, gameScore = 0;
+async function randomCard() {
+  const r = await fetch('https://api.scryfall.com/cards/random?q=' + encodeURIComponent('game:paper -is:funny -t:basic has:art'));
+  return r.json();
+}
+function startGame() { gameOn = true; gameScore = 0; openModal('<p class="status">Shuffling...</p>'); gameRound(); }
+async function gameRound() {
+  try {
+    const cards = await Promise.all([randomCard(), randomCard(), randomCard(), randomCard()]);
+    if (!gameOn) return;
+    const ans = cards[0];
+    const art = ans.image_uris?.art_crop || ans.card_faces?.[0]?.image_uris?.art_crop;
+    const names = [...new Set(cards.map((c) => c.name))];
+    if (!art || names.length < 4) return gameRound();
+    names.sort(() => Math.random() - 0.5);
+    $('#modalBody').innerHTML = `<div class="game">
+      <h2>Guess the card</h2><div class="meta">Score: ${gameScore}</div>
+      <img class="game-art" src="${esc(art)}" alt="Card art">
+      <div class="game-opts">${names.map((n) => `<button class="btn" data-guess="${esc(n)}">${esc(n)}</button>`).join('')}</div></div>`;
+    $('#modalBody').dataset.answer = ans.name;
+    $('#modalBody').dataset.answerImg = ans.image_uris?.normal || ans.card_faces?.[0]?.image_uris?.normal || '';
+  } catch (err) { $('#modalBody').innerHTML = '<p class="status">Could not load cards. Try again in a moment.</p>'; }
+}
+document.addEventListener('click', async (e) => {
+  const g = e.target.closest('[data-guess]');
+  if (!g || !gameOn) return;
+  const answer = $('#modalBody').dataset.answer;
+  $$('[data-guess]').forEach((b) => { b.disabled = true; if (b.dataset.guess === answer) b.classList.add('right'); });
+  if (g.dataset.guess === answer) { gameScore++; setTimeout(() => gameOn && gameRound(), 700); return; }
+  g.classList.add('wrong');
+  let best = null;
+  if (user) { const { data } = await sb.rpc('save_game_score', { score: gameScore }); best = data; }
+  const { data: top } = await sb.from('easter_eggs').select('user_id, game_best').gt('game_best', 0).order('game_best', { ascending: false }).limit(5);
+  await getProfiles((top || []).map((t) => t.user_id));
+  setTimeout(() => {
+    if (!gameOn) return;
+    $('#modalBody').innerHTML = `<div class="game egg-reveal"><h2>Game over</h2>
+      <p>It was <b>${esc(answer)}</b>.</p>
+      ${$('#modalBody').dataset.answerImg ? `<img class="game-card" src="${esc($('#modalBody').dataset.answerImg)}" alt="">` : ''}
+      <p>Your score: <b>${gameScore}</b>${best != null ? ` · Your best: <b>${best}</b>` : ' · Sign in to save your best score'}</p>
+      ${top && top.length ? `<h3>Top players</h3><ol class="leader">${top.map((t) => `<li>@${esc(profilesById[t.user_id]?.username || 'player')} - ${t.game_best}</li>`).join('')}</ol>` : ''}
+      <button class="btn primary" id="playAgain">Play again</button></div>`;
+    $('#playAgain').addEventListener('click', startGame);
+  }, 900);
+});
+
+// ---------- Game stores on the map (OpenStreetMap) ----------
+const storeCache = {};
+const storeIcon = L.divIcon({ className: 'store-pin', html: '<div class="store-dot">&#9830;</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+async function loadStores() {
+  if (!map || !storeLayer) return;
+  if (!$('#storesToggle').checked) { storeLayer.clearLayers(); return; }
+  if (map.getZoom() < 9) { storeLayer.clearLayers(); $('#storeMsg').firstChild.textContent = 'Zoom in on any city to see game stores there. Store data from OpenStreetMap. Official Wizards stores: '; return; }
+  const b = map.getBounds();
+  const r = (v) => Math.round(v * 10) / 10;
+  const key = [r(b.getSouth()), r(b.getWest()), r(b.getNorth()), r(b.getEast())].join(',');
+  let els = storeCache[key];
+  if (!els) {
+    $('#storeMsg').firstChild.textContent = 'Finding game stores... ';
+    const q = `[out:json][timeout:25];(nwr["shop"="games"](${key});nwr["shop"~"collector|hobby|comics"]["name"~"[Gg]ame|[Cc]ard|[Mm]agic|MTG|[Cc]omic",i](${key}););out center 400;`;
+    try {
+      const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) });
+      els = (await res.json()).elements || [];
+      storeCache[key] = els;
+    } catch (err) { $('#storeMsg').firstChild.textContent = 'Could not load game stores right now. '; return; }
+  }
+  storeLayer.clearLayers();
+  els.forEach((s) => {
+    const lat = s.lat ?? s.center?.lat, lng = s.lon ?? s.center?.lon;
+    if (lat == null) return;
+    const t = s.tags || {};
+    const addr = [t['addr:housenumber'], t['addr:street'], t['addr:city']].filter(Boolean).join(' ');
+    const site = t.website || t['contact:website'];
+    L.marker([lat, lng], { icon: storeIcon }).addTo(storeLayer).bindPopup(`<b>${esc(t.name || 'Game store')}</b>${addr ? '<br>' + esc(addr) : ''}${t.opening_hours ? '<br>' + esc(t.opening_hours) : ''}${site ? `<br><a href="${esc(site)}" target="_blank" rel="noopener">Website</a>` : ''}<br><a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener">Directions</a>`);
+  });
+  $('#storeMsg').firstChild.textContent = `${els.length} game store${els.length === 1 ? '' : 's'} in this area. Store data from OpenStreetMap. Official Wizards stores: `;
+}
+$('#storesToggle').addEventListener('change', loadStores);

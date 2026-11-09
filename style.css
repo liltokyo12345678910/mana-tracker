@@ -98,3 +98,44 @@ footer{text-align:center;color:var(--muted);font-size:.8rem;padding:30px 10px}
 
 .card .name,.card .meta,.who{overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .card{min-width:0}
+
+.link{cursor:pointer}.link:hover{color:var(--accent)}
+.btn.icon{padding:6px 12px;font-size:1.3rem;line-height:1}
+.egg-wrap{position:relative}
+.pop{position:absolute;right:0;top:46px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;z-index:50;box-shadow:0 8px 24px #0008}
+.pop.menu{display:flex;flex-direction:column;gap:8px;min-width:220px}
+.pop.hidden,.modal.hidden{display:none}
+.news-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+#newsForm{margin:12px 0}
+textarea{background:#0b0e1a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;width:100%}
+.modal{position:fixed;inset:0;background:#000a;z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow-y:auto}
+.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:20px;width:100%;max-width:760px;position:relative}
+.modal-x{position:absolute;right:12px;top:8px;background:none;border:none;color:var(--text);font-size:2rem;cursor:pointer}
+.phead{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.phead h2{margin:0}
+.pnote{font-style:italic;color:var(--muted);margin-top:4px}
+.pstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0}
+.pstats div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.pstats b{display:block;font-size:1.4rem;color:var(--accent)}
+.pstats span{font-size:.8rem;color:var(--muted)}
+.pbadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.pbadge{border-radius:999px;padding:4px 10px;font-size:.8rem;font-weight:700;border:1px solid var(--line)}
+.pbadge.founder{background:var(--accent);color:#111}
+.pbadge.rare{background:linear-gradient(90deg,#6c5ce7,#e84393);color:#fff}
+.pbadge.game{background:#1e3a5f}
+.main-deck{margin-bottom:10px}
+.egg-reveal{text-align:center}
+.big-badge{font-size:5rem;color:var(--accent);text-shadow:0 0 30px var(--accent)}
+.rare-card{position:relative;max-width:260px;margin:10px auto;border-radius:14px;padding:4px;background:linear-gradient(135deg,hsl(var(--hue),90%,60%),hsl(calc(var(--hue) + 120),90%,60%),hsl(calc(var(--hue) + 240),90%,60%));animation:shine 4s linear infinite}
+.rare-card img{width:100%;border-radius:11px;display:block}
+.rare-tag{position:absolute;top:10px;right:10px;background:#000c;color:#fff;font-weight:800;border-radius:8px;padding:2px 8px}
+@keyframes shine{0%{filter:hue-rotate(0)}100%{filter:hue-rotate(360deg)}}
+.game{text-align:center}
+.game-art{width:100%;max-width:520px;border-radius:12px;margin:10px 0}
+.game-card{max-width:220px;border-radius:12px}
+.game-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn.right{background:#1f7a3f;border-color:#2ecc71}
+.btn.wrong{background:#7a1f2a;border-color:#e74c3c}
+.leader{text-align:left;display:inline-block}
+.store-dot{width:26px;height:26px;border-radius:6px;background:#1e3a5f;border:2px solid var(--accent);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px}
+@media (max-width:560px){.pstats{grid-template-columns:repeat(2,1fr)}.game-opts{grid-template-columns:1fr}}
