@@ -965,7 +965,7 @@ const hiddenIcon = (found) => L.divIcon({ className: 'hidden-pin', html: `<div c
 function drawHidden() {
   if (!map || !hiddenLayer) return;
   hiddenLayer.clearLayers();
-  if (map.getZoom() < 10) return;
+  if (map.getZoom() < 6) return;
   const b = map.getBounds();
   CAPITALS.forEach((c) => {
     // check the pin's copies across the wrapped world so Alaska, Hawaii and every state show however the map was panned
