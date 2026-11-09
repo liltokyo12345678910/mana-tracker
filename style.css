@@ -159,3 +159,11 @@ textarea{background:#0b0e1a;color:var(--text);border:1px solid var(--line);borde
 .qty{display:flex;align-items:center;gap:10px}.qty .btn{padding:4px 12px}
 .foil-img{animation:shine 4s linear infinite}
 @media (max-width:560px){.found-card{grid-template-columns:1fr}.found-card img{max-width:240px;margin:0 auto}}
+
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e74c3c;margin-left:4px;animation:pulse 1.4s infinite}
+.live-dot.hidden{display:none}
+.stream-list{display:flex;flex-direction:column;gap:16px;margin-top:14px}
+.stream-frame{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}
+.stream-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.live-tag{background:#e74c3c;color:#fff;font-weight:800;font-size:.75rem;border-radius:6px;padding:2px 6px}
+#goLiveBox,#streamerAdmin{margin-top:12px}

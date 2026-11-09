@@ -32,6 +32,7 @@ function showTab(id) {
   if (id === 'market' && !$('#marketGrid').children.length) runSearch('usd>1000');
   if (id === 'trade') loadListings();
   if (id === 'news') loadNews();
+  if (id === 'live') loadLive();
   if (id === 'collection') loadCollection();
   if (id === 'chat') { $('#unreadDot').classList.add('hidden'); loadConvos(); }
   if (id === 'account' && user) loadMyListings();
@@ -1175,3 +1176,93 @@ $('#scanInput').addEventListener('change', async (e) => {
   }
 });
 sb.auth.onAuthStateChange(() => { setTimeout(() => { if ($('#collection').classList.contains('active')) loadCollection(); else { coll = []; $('#collList').innerHTML = ''; } }, 60); });
+
+// ---------- Live pack openings (embedded YouTube / Twitch / Kick) ----------
+const SITE_HOST = location.hostname || 'mythicspellswap.github.io';
+function parseStream(link) {
+  let u; try { u = new URL(link.trim().startsWith('http') ? link.trim() : 'https://' + link.trim()); } catch (e) { return null; }
+  const host = u.hostname.replace(/^www\.|^m\./, '');
+  const ok = (s) => (/^[A-Za-z0-9_-]{2,64}$/.test(s || '') ? s : null);
+  if (host === 'youtu.be') return ok(u.pathname.slice(1)) && { platform: 'youtube', channel: u.pathname.slice(1) };
+  if (host.endsWith('youtube.com')) {
+    const v = u.searchParams.get('v');
+    if (ok(v)) return { platform: 'youtube', channel: v };
+    const m = u.pathname.match(/^\/(live|embed|shorts)\/([A-Za-z0-9_-]+)/);
+    if (m && ok(m[2])) return { platform: 'youtube', channel: m[2] };
+    return null;
+  }
+  if (host.endsWith('twitch.tv')) { const n = u.pathname.split('/')[1]; return ok(n) && { platform: 'twitch', channel: n }; }
+  if (host.endsWith('kick.com')) { const n = u.pathname.split('/')[1]; return ok(n) && { platform: 'kick', channel: n }; }
+  return null;
+}
+function embedSrc(s) {
+  if (s.platform === 'youtube') return `https://www.youtube.com/embed/${s.channel}`;
+  if (s.platform === 'twitch') return `https://player.twitch.tv/?channel=${s.channel}&parent=${SITE_HOST}&autoplay=false`;
+  return `https://player.kick.com/${s.channel}?autoplay=false`;
+}
+const PLATFORM_NAME = { youtube: 'YouTube', twitch: 'Twitch', kick: 'Kick' };
+async function amStreamer() {
+  if (!user) return false;
+  if (isOwnerAcct()) return true;
+  const { data } = await sb.from('streamers').select('user_id').eq('user_id', user.id).maybeSingle();
+  return !!data;
+}
+async function loadLive() {
+  const { data: streams } = await sb.from('streams').select('*').order('created_at', { ascending: false }).limit(30);
+  const list = streams || [];
+  $('#liveDot').classList.toggle('hidden', !list.length);
+  await getProfiles(list.map((s) => s.user_id));
+  const mine = user && list.find((s) => s.user_id === user.id);
+  $('#streamList').innerHTML = list.map((s) => `<div class="card stream-card">
+    <div class="stream-frame"><iframe src="${esc(embedSrc(s))}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" loading="lazy" title="${esc(s.title || 'Live stream')}"></iframe></div>
+    <div class="row between"><div><span class="live-tag">LIVE</span> <b>${esc(s.title || 'Pack opening')}</b></div><span class="meta">${PLATFORM_NAME[s.platform]} · started ${ago(s.created_at)}</span></div>
+    <div class="meta who link" data-profile="${s.user_id}">${avatarHtml(profilesById[s.user_id])} @${esc(profilesById[s.user_id]?.username || 'player')}</div>
+    ${user && (s.user_id === user.id || isOwnerAcct()) ? `<button class="btn danger" data-endstream="${s.id}">End stream</button>` : ''}
+  </div>`).join('') || '<p class="status">No one is live right now. Check back soon!</p>';
+  const canStream = await amStreamer();
+  $('#goLiveBox').classList.toggle('hidden', !canStream || !!mine);
+  $('#streamerAdmin').classList.toggle('hidden', !isOwnerAcct());
+  if (isOwnerAcct()) loadStreamers();
+}
+async function loadStreamers() {
+  const { data } = await sb.from('streamers').select('user_id, added_at').order('added_at');
+  await getProfiles((data || []).map((s) => s.user_id));
+  $('#streamerList').innerHTML = (data || []).map((s) => `<div class="row between"><span>@${esc(profilesById[s.user_id]?.username || 'player')}</span><button class="btn" data-rmstreamer="${s.user_id}">Remove</button></div>`).join('') || '<p class="small">Nobody approved yet. You can always stream yourself.</p>';
+}
+$('#goLiveForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  const s = parseStream(d.link || '');
+  if (!s) { $('#goLiveMsg').textContent = "That link didn't work. Use a YouTube video/live link, or a twitch.tv or kick.com channel link."; return; }
+  $('#goLiveMsg').textContent = 'Posting...';
+  const { error } = await sb.from('streams').insert({ title: (d.title || '').trim() || null, platform: s.platform, channel: s.channel });
+  if (error) { $('#goLiveMsg').textContent = error.code === '23505' ? 'You already have a stream posted. End it first.' : 'Could not post: ' + error.message; return; }
+  e.target.reset(); $('#goLiveMsg').textContent = "You're live on the site!";
+  loadLive();
+});
+$('#addStreamerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#addStreamerInput').value.trim().replace(/^@/, '');
+  if (!name) return;
+  const { data: p } = await sb.from('profiles').select('id, username').ilike('username', name).maybeSingle();
+  if (!p) { $('#streamerMsg').textContent = 'No player with that username.'; return; }
+  const { error } = await sb.from('streamers').insert({ user_id: p.id });
+  $('#streamerMsg').textContent = error ? (error.code === '23505' ? '@' + p.username + ' is already approved.' : 'Could not approve: ' + error.message) : '@' + p.username + ' can now post streams.';
+  $('#addStreamerInput').value = '';
+  loadStreamers();
+});
+document.addEventListener('click', async (e) => {
+  const en = e.target.closest('[data-endstream]');
+  if (en) {
+    if (en.dataset.armed !== '1') { en.dataset.armed = '1'; en.textContent = 'Tap again to end'; return; }
+    en.disabled = true;
+    const { data: gone } = await sb.from('streams').delete().eq('id', en.dataset.endstream).select('id');
+    if (!gone?.length) { alert('Could not end the stream. Try again.'); en.disabled = false; return; }
+    loadLive();
+  }
+  const rs = e.target.closest('[data-rmstreamer]');
+  if (rs) { await sb.from('streamers').delete().eq('user_id', rs.dataset.rmstreamer); loadStreamers(); }
+});
+// Red dot on the Live tab when someone is streaming
+(async () => { const { count } = await sb.from('streams').select('id', { count: 'exact', head: true }); $('#liveDot').classList.toggle('hidden', !count); })();
+sb.auth.onAuthStateChange(() => { setTimeout(() => { if ($('#live').classList.contains('active')) loadLive(); }, 80); });
