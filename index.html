@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0f1220">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20261109f">
+<link rel="stylesheet" href="style.css?v=20261109g">
 </head>
 <body>
 <header class="topbar">
@@ -21,7 +21,7 @@
   <nav>
     <button class="tab active" data-tab="home">Home</button>
     <button class="tab" data-tab="news">News</button>
-    <button class="tab" data-tab="live">Live <span id="liveDot" class="live-dot hidden"></span></button>
+    <button class="tab" data-tab="live">Videos <span id="liveDot" class="live-dot hidden"></span></button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="trade">Buy &amp; Trade</button>
     <button class="tab" data-tab="collection">My Cards</button>
@@ -75,22 +75,22 @@
     <div id="newsList" class="news-list"></div>
   </section>
 
-  <!-- LIVE -->
+  <!-- VIDEOS -->
   <section id="live" class="panel">
-    <h2>Live pack openings</h2>
-    <p class="small">Watch approved players open packs live. Streams play from YouTube, Twitch or Kick.</p>
+    <h2>Pack opening videos</h2>
+    <p class="small">Watch players open packs. Videos play from YouTube, TikTok or Twitch.</p>
     <div id="goLiveBox" class="box stack hidden">
-      <h3>Go live</h3>
+      <h3>Post a video</h3>
       <form id="goLiveForm" class="stack">
-        <input name="title" maxlength="120" placeholder="Stream title, e.g. Opening a Foundations booster box!">
-        <input name="link" required maxlength="300" placeholder="Paste your YouTube, Twitch or Kick stream link">
-        <button class="btn primary" type="submit">Post my stream</button>
+        <input name="title" maxlength="120" placeholder="Title, e.g. Opening a Foundations booster box!">
+        <input name="link" required maxlength="300" placeholder="Paste a YouTube, TikTok or Twitch video link">
+        <button class="btn primary" type="submit">Post video</button>
       </form>
-      <p class="small">Start your stream on YouTube, Twitch or Kick first, then paste the link here.</p>
+      <p class="small">Upload your video to YouTube, TikTok or Twitch first, then paste the link here.</p>
       <p id="goLiveMsg" class="small"></p>
     </div>
     <div id="streamerAdmin" class="box stack hidden">
-      <h3>Who can stream</h3>
+      <h3>Who can post videos</h3>
       <form id="addStreamerForm" class="row">
         <input id="addStreamerInput" maxlength="24" placeholder="Username to approve">
         <button class="btn primary" type="submit">Approve</button>
@@ -280,6 +280,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20261109f"></script>
+<script src="app.js?v=20261109g"></script>
 </body>
 </html>

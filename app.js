@@ -1177,30 +1177,35 @@ $('#scanInput').addEventListener('change', async (e) => {
 });
 sb.auth.onAuthStateChange(() => { setTimeout(() => { if ($('#collection').classList.contains('active')) loadCollection(); else { coll = []; $('#collList').innerHTML = ''; } }, 60); });
 
-// ---------- Live pack openings (embedded YouTube / Twitch / Kick) ----------
+// ---------- Pack opening videos (embedded YouTube / TikTok / Twitch) ----------
 const SITE_HOST = location.hostname || 'mythicspellswap.github.io';
-function parseStream(link) {
+function parseVideo(link) {
   let u; try { u = new URL(link.trim().startsWith('http') ? link.trim() : 'https://' + link.trim()); } catch (e) { return null; }
   const host = u.hostname.replace(/^www\.|^m\./, '');
-  const ok = (s) => (/^[A-Za-z0-9_-]{2,64}$/.test(s || '') ? s : null);
-  if (host === 'youtu.be') return ok(u.pathname.slice(1)) && { platform: 'youtube', channel: u.pathname.slice(1) };
+  const ok = (s) => (/^[A-Za-z0-9_-]{2,120}$/.test(s || '') ? s : null);
+  if (host === 'youtu.be') { const id = ok(u.pathname.slice(1)); return id && { platform: 'youtube', channel: id }; }
   if (host.endsWith('youtube.com')) {
-    const v = u.searchParams.get('v');
-    if (ok(v)) return { platform: 'youtube', channel: v };
+    const v = ok(u.searchParams.get('v')); if (v) return { platform: 'youtube', channel: v };
     const m = u.pathname.match(/^\/(live|embed|shorts)\/([A-Za-z0-9_-]+)/);
-    if (m && ok(m[2])) return { platform: 'youtube', channel: m[2] };
-    return null;
+    return m && ok(m[2]) ? { platform: 'youtube', channel: m[2] } : null;
   }
-  if (host.endsWith('twitch.tv')) { const n = u.pathname.split('/')[1]; return ok(n) && { platform: 'twitch', channel: n }; }
-  if (host.endsWith('kick.com')) { const n = u.pathname.split('/')[1]; return ok(n) && { platform: 'kick', channel: n }; }
+  if (host.endsWith('tiktok.com')) { const m = u.pathname.match(/\/video\/(\d{5,25})/); return m ? { platform: 'tiktok', channel: m[1] } : null; }
+  if (host === 'clips.twitch.tv') { const id = ok(u.pathname.split('/')[1]); return id && { platform: 'twitch_clip', channel: id }; }
+  if (host.endsWith('twitch.tv')) {
+    let m = u.pathname.match(/^\/videos\/(\d+)/); if (m) return { platform: 'twitch_video', channel: m[1] };
+    m = u.pathname.match(/\/clip\/([A-Za-z0-9_-]+)/); if (m && ok(m[1])) return { platform: 'twitch_clip', channel: m[1] };
+  }
   return null;
 }
 function embedSrc(s) {
   if (s.platform === 'youtube') return `https://www.youtube.com/embed/${s.channel}`;
+  if (s.platform === 'tiktok') return `https://www.tiktok.com/embed/v2/${s.channel}`;
+  if (s.platform === 'twitch_video') return `https://player.twitch.tv/?video=${s.channel}&parent=${SITE_HOST}&autoplay=false`;
+  if (s.platform === 'twitch_clip') return `https://clips.twitch.tv/embed?clip=${s.channel}&parent=${SITE_HOST}&autoplay=false`;
   if (s.platform === 'twitch') return `https://player.twitch.tv/?channel=${s.channel}&parent=${SITE_HOST}&autoplay=false`;
   return `https://player.kick.com/${s.channel}?autoplay=false`;
 }
-const PLATFORM_NAME = { youtube: 'YouTube', twitch: 'Twitch', kick: 'Kick' };
+const PLATFORM_NAME = { youtube: 'YouTube', tiktok: 'TikTok', twitch_video: 'Twitch', twitch_clip: 'Twitch clip', twitch: 'Twitch', kick: 'Kick' };
 async function amStreamer() {
   if (!user) return false;
   if (isOwnerAcct()) return true;
@@ -1208,37 +1213,37 @@ async function amStreamer() {
   return !!data;
 }
 async function loadLive() {
-  const { data: streams } = await sb.from('streams').select('*').order('created_at', { ascending: false }).limit(30);
-  const list = streams || [];
-  $('#liveDot').classList.toggle('hidden', !list.length);
+  const { data: vids } = await sb.from('streams').select('*').order('created_at', { ascending: false }).limit(50);
+  const list = vids || [];
   await getProfiles(list.map((s) => s.user_id));
-  const mine = user && list.find((s) => s.user_id === user.id);
   $('#streamList').innerHTML = list.map((s) => `<div class="card stream-card">
-    <div class="stream-frame"><iframe src="${esc(embedSrc(s))}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" loading="lazy" title="${esc(s.title || 'Live stream')}"></iframe></div>
-    <div class="row between"><div><span class="live-tag">LIVE</span> <b>${esc(s.title || 'Pack opening')}</b></div><span class="meta">${PLATFORM_NAME[s.platform]} · started ${ago(s.created_at)}</span></div>
+    <div class="stream-frame${s.platform === 'tiktok' ? ' tall' : ''}"><iframe src="${esc(embedSrc(s))}" allowfullscreen allow="encrypted-media; picture-in-picture" loading="lazy" title="${esc(s.title || 'Video')}"></iframe></div>
+    <div class="row between"><b>${esc(s.title || 'Pack opening')}</b><span class="meta">${PLATFORM_NAME[s.platform] || ''} · ${ago(s.created_at)}</span></div>
     <div class="meta who link" data-profile="${s.user_id}">${avatarHtml(profilesById[s.user_id])} @${esc(profilesById[s.user_id]?.username || 'player')}</div>
-    ${user && (s.user_id === user.id || isOwnerAcct()) ? `<button class="btn danger" data-endstream="${s.id}">End stream</button>` : ''}
-  </div>`).join('') || '<p class="status">No one is live right now. Check back soon!</p>';
-  const canStream = await amStreamer();
-  $('#goLiveBox').classList.toggle('hidden', !canStream || !!mine);
+    ${user && (s.user_id === user.id || isOwnerAcct()) ? `<button class="btn danger" data-endstream="${s.id}">Delete video</button>` : ''}
+  </div>`).join('') || '<p class="status">No videos yet. Check back soon!</p>';
+  const canPost = await amStreamer();
+  $('#goLiveBox').classList.toggle('hidden', !canPost);
   $('#streamerAdmin').classList.toggle('hidden', !isOwnerAcct());
   if (isOwnerAcct()) loadStreamers();
 }
 async function loadStreamers() {
   const { data } = await sb.from('streamers').select('user_id, added_at').order('added_at');
   await getProfiles((data || []).map((s) => s.user_id));
-  $('#streamerList').innerHTML = (data || []).map((s) => `<div class="row between"><span>@${esc(profilesById[s.user_id]?.username || 'player')}</span><button class="btn" data-rmstreamer="${s.user_id}">Remove</button></div>`).join('') || '<p class="small">Nobody approved yet. You can always stream yourself.</p>';
+  $('#streamerList').innerHTML = (data || []).map((s) => `<div class="row between"><span>@${esc(profilesById[s.user_id]?.username || 'player')}</span><button class="btn" data-rmstreamer="${s.user_id}">Remove</button></div>`).join('') || '<p class="small">Nobody approved yet. You can always post videos yourself.</p>';
 }
 $('#goLiveForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const d = Object.fromEntries(new FormData(e.target));
-  const s = parseStream(d.link || '');
-  if (!s) { $('#goLiveMsg').textContent = "That link didn't work. Use a YouTube video/live link, or a twitch.tv or kick.com channel link."; return; }
+  const s = parseVideo(d.link || '');
+  if (!s) { $('#goLiveMsg').textContent = "That link didn't work. Use a YouTube video, TikTok video, or Twitch video/clip link."; return; }
   $('#goLiveMsg').textContent = 'Posting...';
   const { error } = await sb.from('streams').insert({ title: (d.title || '').trim() || null, platform: s.platform, channel: s.channel });
-  if (error) { $('#goLiveMsg').textContent = error.code === '23505' ? 'You already have a stream posted. End it first.' : 'Could not post: ' + error.message; return; }
-  e.target.reset(); $('#goLiveMsg').textContent = "You're live on the site!";
-  loadLive();
+  if (error) { $('#goLiveMsg').textContent = 'Could not post: ' + error.message; return; }
+  e.target.reset();
+  await loadLive();
+  $('#goLiveMsg').textContent = 'Video posted!';
+  setTimeout(() => { $('#goLiveMsg').textContent = ''; }, 5000);
 });
 $('#addStreamerForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1247,22 +1252,21 @@ $('#addStreamerForm').addEventListener('submit', async (e) => {
   const { data: p } = await sb.from('profiles').select('id, username').ilike('username', name).maybeSingle();
   if (!p) { $('#streamerMsg').textContent = 'No player with that username.'; return; }
   const { error } = await sb.from('streamers').insert({ user_id: p.id });
-  $('#streamerMsg').textContent = error ? (error.code === '23505' ? '@' + p.username + ' is already approved.' : 'Could not approve: ' + error.message) : '@' + p.username + ' can now post streams.';
+  $('#streamerMsg').textContent = error ? (error.code === '23505' ? '@' + p.username + ' is already approved.' : 'Could not approve: ' + error.message) : '@' + p.username + ' can now post videos.';
   $('#addStreamerInput').value = '';
   loadStreamers();
 });
 document.addEventListener('click', async (e) => {
   const en = e.target.closest('[data-endstream]');
   if (en) {
-    if (en.dataset.armed !== '1') { en.dataset.armed = '1'; en.textContent = 'Tap again to end'; return; }
+    if (en.dataset.armed !== '1') { en.dataset.armed = '1'; en.textContent = 'Tap again to delete'; return; }
     en.disabled = true;
     const { data: gone } = await sb.from('streams').delete().eq('id', en.dataset.endstream).select('id');
-    if (!gone?.length) { alert('Could not end the stream. Try again.'); en.disabled = false; return; }
+    if (!gone?.length) { alert('Could not delete the video. Try again.'); en.disabled = false; return; }
+    $('#goLiveMsg').textContent = '';
     loadLive();
   }
   const rs = e.target.closest('[data-rmstreamer]');
   if (rs) { await sb.from('streamers').delete().eq('user_id', rs.dataset.rmstreamer); loadStreamers(); }
 });
-// Red dot on the Live tab when someone is streaming
-(async () => { const { count } = await sb.from('streams').select('id', { count: 'exact', head: true }); $('#liveDot').classList.toggle('hidden', !count); })();
 sb.auth.onAuthStateChange(() => { setTimeout(() => { if ($('#live').classList.contains('active')) loadLive(); }, 80); });
